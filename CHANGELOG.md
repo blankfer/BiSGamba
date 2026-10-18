@@ -1,6 +1,6 @@
 # BiS Gamba - Changelog
 
-## Unreleased
+## 1.7.0
 
 - **The team game.** Press **team** (or `/bisgamba team 100`) and the number is the wager for a team table. People join as usual; it needs an even number, 4 or more. When the rolls are called the sides are dealt at random and the wager is shared out: 100 between 5 a side is everyone `/roll 20`. If it doesn't split evenly the table calls an **audible** and moves the wager to the nearest even split (100 three ways is 99; exactly in between goes up). Each side's rolls are added up; a tie means both sides roll again; then **each loser pays one winner**, their share of the gap (or of the wager, with flat pay). Your side stands on the left, theirs on the right, every seat the same size, each side's total over it.
 - **The table, redone.** You stand big, in 3D, on the left, with your buttons under you - join, roll, leave, pay - and only the next one to press is lit. Everyone else sits on the right. The window keeps the BiS 1.43:1 shape.
