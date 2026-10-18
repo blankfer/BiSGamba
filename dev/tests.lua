@@ -852,7 +852,14 @@ check(G.Game.state == "ROLL", "the expiring timer does not re-fire")
 ---------------------------------------------------------------- the host can sit out
 SlashCmdList.BISGAMBA("reset"); SlashCmdList.BISGAMBA("start 100")
 check(G.Game.Seated(), "host is seated by default")
+-- SHIFT-CLICK TO LEAVE (Arn, 17 Oct: "shift click for this one too, might leave by mistake")
 G.UI.leaveBtn.scripts.OnClick()
+check(G.Game.Seated(), "a plain click on leave keeps you in")
+check(lastChat():find("shift%-click"), "and says how: " .. lastChat())
+local realShift = IsShiftKeyDown
+IsShiftKeyDown = function() return true end
+G.UI.leaveBtn.scripts.OnClick()
+IsShiftKeyDown = realShift
 check(not G.Game.Seated() and G.Game.IsHost() and G.Game.state == "JOIN", "host backed out but still runs the table")
 check(not G.UI.joinBtn.off and G.UI.joinBtn.hot and G.UI.leaveBtn.off, "out: join lights up, leave goes dim")
 fire("CHAT_MSG_RAID", "1", "Dps2"); fire("CHAT_MSG_RAID", "1", "Kumsecration")
@@ -888,7 +895,13 @@ G.UI.joinBtn.scripts.OnClick()
 check(said[#said] == "RAID: 1", "join types 1: " .. said[#said])
 from("Dps2", "JOIN", "Kumlust")
 check(G.Game.Seated() and G.UI.leaveBtn.hot and G.UI.joinBtn.off, "seated: leave lights up, join goes dim")
+local sayBefore = #said
 G.UI.leaveBtn.scripts.OnClick()
+check(#said == sayBefore, "a plain click types nothing")
+local realShift2 = IsShiftKeyDown
+IsShiftKeyDown = function() return true end
+G.UI.leaveBtn.scripts.OnClick()
+IsShiftKeyDown = realShift2
 check(said[#said] == "RAID: -1", "leave types -1")
 from("Dps2", "LEAVE", "Kumlust"); from("Dps2", "JOIN", "Kumlust")
 -- a stranger's OPEN doesn't hijack

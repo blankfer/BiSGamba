@@ -2978,7 +2978,16 @@ function UI:Build()
   join:SetPoint("TOPLEFT", f, "TOPLEFT", PAD, -top)
   local roll = Act("roll", "Roll the right range", function() Game.RollMe() end)
   roll:SetPoint("LEFT", join, "RIGHT", 4, 0)
-  local leave = Act("leave", "Types -1 in raid chat: out of this round", function() Game.JoinMe() end)
+  -- SHIFT-CLICK TO LEAVE (Arn, 17 Oct 2026: "shift click for this one too, might leave by mistake"):
+  -- a stray click on a lit button must not take you out of a round you meant to play
+  local leave = Act("leave", "Shift-click: types -1 in raid chat, out of this round", function()
+    if not IsShiftKeyDown() then
+      UI:Event("shift-click to leave", "warn")
+      Print("shift-click leave to leave the table")
+      return
+    end
+    Game.JoinMe()
+  end)
   leave:SetPoint("TOP", join, "BOTTOM", 0, -4)
   local pay = Act("pay", "Open a trade with the next person you owe and put the gold in", function() Trade.Pay() end)
   pay:SetPoint("LEFT", leave, "RIGHT", 4, 0)
