@@ -1,5 +1,10 @@
 # BiS Gamba - Changelog
 
+## 1.7.1
+
+- **BiS addons can talk to other players on Forever again.** The game wrongly says addon messages are restricted, and the shared BiS code believed it, so nothing this addon sends to other players went out. It does now - and your guild's BiS Guild map shows where you are (outside instances; `/biscomm share off` turns that off).
+- **Names with surnames work.** The shared code now uses your whole "Name Surname": you no longer show up twice on your own guild map, and party members with surnames are recognised.
+
 ## 1.7.0
 
 - **The team game.** Press **team** (or `/bisgamba team 100`) and the number is the wager for a team table. People join as usual; it needs an even number, 4 or more. When the rolls are called the sides are dealt at random and the wager is shared out: 100 between 5 a side is everyone `/roll 20`. If it doesn't split evenly the table calls an **audible** and moves the wager to the nearest even split (100 three ways is 99; exactly in between goes up). Each side's rolls are added up; a tie means both sides roll again; then **each loser pays one winner**, their share of the gap (or of the wager, with flat pay). Your side stands on the left, theirs on the right, every seat the same size, each side's total over it.
