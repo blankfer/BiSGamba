@@ -1,5 +1,10 @@
 # BiS Gamba - Changelog
 
+## Unreleased
+
+- **The big table shows everyone whole.** Making the table view big cut the players off at the chest - the game reset each model's camera when the window grew. Every player is posed again after the switch, big or small.
+- **Closing the big table takes the dark backdrop with it.** Closing the window while it was big (the X, or Escape) left the whole screen dimmed.
+
 ## 1.8.0
 
 - **The pay walk.** When a round settles, every loser runs from their seat to the winner, begs, and runs back - in a team game each loser to their winner in turn. Everyone sees it; nothing extra is sent.

@@ -17,15 +17,31 @@ Frame.__index = function(t, k)
   if type(k) == "string" and k:match("^%u") then return function() return nil end end
   return nil
 end
+local MODELS = {}                 -- every 3D model made, for a window's scale change to reach
 local function newFrame(kind, name, parent)
   local f = setmetatable({ kind = kind, name = name, parent = parent, scripts = {}, shown = true, w = 100, h = 100 }, Frame)
   if name then _G[name] = f end
+  if kind == "DressUpModel" or kind == "PlayerModel" then MODELS[#MODELS + 1] = f end
   return f
 end
 function Frame:SetScript(ev, fn) self.scripts[ev] = fn end
 function Frame:GetScript(ev) return self.scripts[ev] end
-function Frame:Show() self.shown = true end
-function Frame:Hide() self.shown = false end
+function Frame:HookScript(ev, fn)
+  local old = self.scripts[ev]
+  self.scripts[ev] = old and function(...) old(...) fn(...) end or fn
+end
+-- the client fires OnShow / OnHide when a frame changes between shown and hidden (the X, Escape through
+-- UISpecialFrames, a Toggle): a window closed while big must take its backdrop with it
+function Frame:Show()
+  local was = self.shown
+  self.shown = true
+  if not was and self.scripts.OnShow then self.scripts.OnShow(self) end
+end
+function Frame:Hide()
+  local was = self.shown
+  self.shown = false
+  if was and self.scripts.OnHide then self.scripts.OnHide(self) end
+end
 function Frame:IsShown() return self.shown end
 function Frame:IsVisible() return self.shown end
 function Frame:GetPoint() return "CENTER", nil, "CENTER", 10, 20 end
@@ -89,6 +105,8 @@ function Frame:RegisterEvent(e)
 end
 function Frame:SetAnimation(a) self.anim = a end
 function Frame:SetFacing(r) self.facing = r end
+function Frame:SetPortraitZoom(z) self.zoom = z end
+function Frame:SetPosition(x, y, z) self.pos = { x, y, z } end
 function Frame:SetUnit(u) if u == "raid99" then error("bad unit") end self.unit = u; self.model = "unit:" .. u end
 function Frame:SetCreature(id) self.model = "npc:" .. id end
 function Frame:SetDisplayInfo(id) self.model = "display:" .. id end
@@ -202,7 +220,18 @@ function Frame:GetFrameLevel() return self.level or 1 end
 -- frame is on screen is unknown (nil) until a test says - the client's answer before layout
 function Frame:SetFrameStrata(s) self.strata = s end
 function Frame:GetFrameStrata() return self.strata or "MEDIUM" end
-function Frame:SetScale(s) if type(s) ~= "number" or s <= 0 then error("SetScale needs a positive number") end self.scale = s end
+-- A WINDOW'S SCALE CHANGE RESETS THE CAMERA of every model inside it to the client's own framing, a close
+-- portrait (Arn's screenshot, 21 Oct 2026: the big table showed "Chain" cut off at the chest; UNVERIFIED
+-- beyond that one picture) - so a pose set before the change is lost.
+function Frame:SetScale(s)
+  if type(s) ~= "number" or s <= 0 then error("SetScale needs a positive number") end
+  self.scale = s
+  for _, m in ipairs(MODELS) do
+    local p = m.parent
+    while p and p ~= self do p = p.parent end
+    if p == self then m.zoom, m.pos = "reset", nil end
+  end
+end
 function Frame:GetScale() return self.scale or 1 end
 function Frame:GetEffectiveScale() return self.scale or 1 end
 function Frame:GetLeft() return self.left end
@@ -653,10 +682,24 @@ do
   Tb.SetBig(true)
   check(Tb.big and f:GetFrameStrata() == "FULLSCREEN_DIALOG" and f:GetScale() > 1 and Tb.back.shown,
     "big: over everything, bigger, a dark backdrop: " .. f:GetScale())
+  -- the whole body again after the scale change (Arn: "full screen 3d model gets cut off")
+  runTimers(1)
+  local posed = true
+  for _, act in ipairs(Tb.List()) do
+    if act.f:IsShown() and not (act.model.zoom == 0 and act.model.pos) then posed = false end
+  end
+  check(posed, "big: every model posed again, the whole body (the scale change reset their cameras)")
   G.UI:CombatHide()
   check(not Tb.big and f:GetFrameStrata() == "MEDIUM" and f:GetScale() == (BiSGambaDB.scale or 1) and not Tb.back.shown,
     "a fight: small again at once")
   if G.UI.pendingShow then G.UI:CombatShow() end
+  -- closed while big (the X, Escape): the dark backdrop goes with the window (Arn: "the screen stay dim")
+  if not f:IsShown() then G.UI:Show() end
+  Tb.SetBig(true)
+  f:Hide()
+  check(not Tb.big and not Tb.back.shown and f:GetFrameStrata() == "MEDIUM",
+    "closed while big: small again, no dark backdrop left over the screen")
+  G.UI:Show()
   -- THE DEMO: pretend people, a pretend round - drawing only
   local sentBefore = #addon
   local roundsBefore = #(BiSGambaDB.rounds or {})
