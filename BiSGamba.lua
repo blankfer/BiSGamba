@@ -391,7 +391,7 @@ local function InitDB()
   -- was the old default written in, not a choice anyone can be told apart by: all go 3D once, and
   -- the options' 2D button still takes them back.
   if ver < 7 then db.view = "3d" end
-  if db.view ~= "2d" and db.view ~= "3d" then db.view = "3d" end
+  if db.view ~= "2d" and db.view ~= "3d" and db.view ~= "table" then db.view = "3d" end   -- (table: Table.lua)
   -- stats used to be a bare net figure; keep it, give it somewhere to grow
   if ver < 4 then
     for name, v in pairs(db.stats) do
@@ -2341,7 +2341,8 @@ UI = { seats = {}, rows = {} }
 local SeatOf                     -- the seat a name sits in, yours included; defined with the reactions below
 G.UI = UI
 
-local VIEWS = { "2d", "3d" }
+-- the TABLE view (Arn, 20 Oct 2026: everyone standing in 3D around one round table - Table.lua)
+local VIEWS = { "2d", "3d", "table" }
 
 -- One grid, one cell size, for every view. Switching views only changes what is
 -- drawn in the art box - never the size of anything - so nothing moves under the
@@ -2366,7 +2367,8 @@ local RATIO = 1.43       -- the BiS window shape: grow to fit, keep the shape (A
 -- at the close, so the leftmost button's left edge is 486 - (8+22+4+50+4+74+4+38+4
 -- +44+10+26+2+26) = 486 - 316 = 170 from the left. 170 - 12 = 158 clear; held at
 -- 148 so a long line keeps air instead of touching the 2d button.
-local CONSOLE_W = 148
+-- The table view's button (20 Oct 2026: 34 wide, 2 apart) takes 36 more: 158 - 36 = 122 clear, held at 112.
+local CONSOLE_W = 112
 
 -- what a 2D portrait does instead of an animation
 local MOOD_WORD = {
@@ -2457,6 +2459,14 @@ local function Pose(seat)
     pcall(m.SetAnimation, m, seat.anim or ANIM.stand)
     return
   end
+  if seat.actor then
+    -- the table view: the whole body, standing in the room; Table.lua turns it (Tb.Face)
+    if m.SetPortraitZoom then pcall(m.SetPortraitZoom, m, 0) end
+    pcall(m.SetPosition, m, 0, 0, 0)
+    pcall(m.SetFacing, m, seat.face or 0)
+    pcall(m.SetAnimation, m, seat.anim or ANIM.stand)
+    return
+  end
   if View() == "3d" then
     if m.SetPortraitZoom then pcall(m.SetPortraitZoom, m, db.portrait or 0.75)
     else pcall(m.SetPosition, m, 1.2, 0, -0.8) end
@@ -2516,6 +2526,8 @@ local function ApplyModel(seat)
   end
   Pose(seat)
 end
+
+G.Kit.ApplyModel = ApplyModel       -- the table view's people get their bodies the same way (Table.lua)
 
 local function ApplyArt(seat)
   if View() == "2d" and not seat.big then           -- you are always in 3D
@@ -2922,9 +2934,10 @@ function UI:Build()
   local prev = debts
   for i = #VIEWS, 1, -1 do
     local v = VIEWS[i]
-    local b = SmallButton(f, v, 26)
+    local b = SmallButton(f, v, v == "table" and 34 or 26)
     b:SetPoint("RIGHT", prev, "LEFT", i == #VIEWS and -10 or -2, 0)
-    b.tip = ({ ["2d"] = "2D portraits", ["3d"] = "3D portraits" })[v]
+    b.tip = ({ ["2d"] = "2D portraits", ["3d"] = "3D portraits",
+               table = "Everyone in 3D around one round table - click the floor to walk" })[v]
     b:SetScript("OnClick", function() db.view = v; self:Refresh() end)
     self.viewBtns[v] = b
     prev = b
@@ -3237,7 +3250,7 @@ function UI:Build()
     end
 
     local every = { self.mySeat }               -- yours too: a cheer on the big seat must end as well
-    for _, s in ipairs(self.seats) do every[#every + 1] = s end
+    for _, s in ipairs(UI.Everyone()) do every[#every + 1] = s end
     for _, seat in ipairs(every) do
       if seat.person and seat.restAt and now > seat.restAt and not seat.walking then
         seat.restAt = nil; seat.anim = ANIM.stand
@@ -3353,6 +3366,12 @@ local function TeamLayout(self, minW)
 end
 
 --- The people at the table who are not you, in seat order.
+--- Everyone drawn at the table now: the grid's seats, or the table view's people (Table.lua).
+function UI.Everyone()
+  if View() == "table" and G.Table then return G.Table.List() end
+  return UI.seats
+end
+
 function UI.Others()
   local me, out = MyName(), {}
   for _, name in ipairs(Game.order) do if name ~= me then out[#out + 1] = name end end
@@ -3383,10 +3402,18 @@ end
 
 function UI:Layout()
   local n = math.min(#UI.Others(), COLS * MAX_ROWS)
-  local teamView = UI.TeamView()
+  local tableView = View() == "table" and G.Table ~= nil
+  local teamView = UI.TeamView() and not tableView
+  -- THE TABLE VIEW (Table.lua): no grid - everyone, you too, stands around the table; the grid's seats
+  -- empty, and your big seat steps aside as in the team view
+  if tableView then
+    for _, seat in ipairs(self.seats) do FillSeat(seat, nil) end
+  elseif G.Table then
+    G.Table.Hide()
+  end
   -- in the team view you are a seat on your side like everyone else; the big seat steps aside and
   -- your buttons move up into its place
-  if teamView then
+  if teamView or tableView then
     if self.mySeat then self.mySeat.cell:Hide() end
     self.joinBtn:ClearAllPoints()
     self.joinBtn:SetPoint("TOPLEFT", self.frame, "TOPLEFT", PAD, -HEAD_H)
@@ -3396,7 +3423,8 @@ function UI:Layout()
     self.joinBtn:SetPoint("TOPLEFT", self.frame, "TOPLEFT", PAD, -(HEAD_H + ROLL_H + BIG_ART_H + 6 + TEXT_H + 4))
     if self.teamHeads then for _, s in pairs(self.teamHeads) do s:Hide() end end
   end
-  local layout = teamView and function(_, _, minW) return TeamLayout(self, minW) end or GridLayout
+  local layout = tableView and function(_, _, minW) return G.Table.Layout(self, minW) end
+    or teamView and function(_, _, minW) return TeamLayout(self, minW) end or GridLayout
   local w, h = layout(self, n)
   self.scene:SetHeight(h)
   local dh = 0
@@ -3419,7 +3447,7 @@ function UI:Layout()
   -- four buttons; too narrow for its height, the seats get the extra width (and stay centred); too
   -- wide, the room goes at the bottom
   -- the left column: your big seat and two rows of buttons under it
-  local left = teamView and (2 * 28) or (ROLL_H + BIG_ART_H + 6 + TEXT_H + 4 + 2 * 28)
+  local left = (teamView or tableView) and (2 * 28) or (ROLL_H + BIG_ART_H + 6 + TEXT_H + 4 + 2 * 28)
   local content = math.max(h + dh + bh, left)
   local H = HEAD_H + content + PAD + 28
   local W = w + ACT_W
@@ -3430,7 +3458,7 @@ function UI:Layout()
     H = math.floor(W / RATIO + 0.5)
   end
   self.frame:SetSize(W, H)
-  if n == 0 and not teamView then self.empty:Show() else self.empty:Hide() end
+  if n == 0 and not teamView and not tableView then self.empty:Show() else self.empty:Hide() end
 end
 
 --- Somebody sat down (Arn: "a new person joins, a small progress bar fast like 1 second, determining
@@ -3772,6 +3800,7 @@ end
 
 --- Combat starts: get out of the way, and remember to come back.
 function UI:CombatHide()
+  if G.Table and G.Table.big then G.Table.SetBig(false) end    -- a fight: never the big table
   if db.combat == false then return end
   if self.frame and self.frame:IsShown() then
     self.pendingShow = true
@@ -3793,6 +3822,8 @@ function UI:Toggle()
 end
 
 function SeatOf(name)
+  -- the table view: whoever stands for that name in the room (Table.lua)
+  if View() == "table" and G.Table then return G.Table.ActorOf(name) end
   -- you have your own big seat on the left: your cheers, cries and turns play there
   if UI.mySeat and name == MyName() then return UI.mySeat end
   for _, seat in ipairs(UI.seats) do
@@ -3809,7 +3840,7 @@ function UI:OnRoll(name, roll)
   if roll == 1 or roll == n then
     local you, them = (roll == 1) and ANIM.cry or ANIM.flex, (roll == 1) and ANIM.laugh or ANIM.cheer
     if seat then self:Emote(seat, you, 4) end
-    for _, s in ipairs(self.seats) do
+    for _, s in ipairs(UI.Everyone()) do
       if s.person and s ~= seat then self:Emote(s, them, 4) end
     end
     return
@@ -3840,6 +3871,8 @@ end
 
 --- One seat walks to another and back (delay: seconds before it sets off).
 function UI:PayWalk(from, to, delay)
+  -- the table view: across the room, to wherever the winner stands (Table.lua)
+  if from and from.actor and G.Table then return G.Table.PayWalk(from, to, delay) end
   if not (from and to and from ~= to and from.model:IsShown()) then return false end
   local x0, y0 = ModelPos(from)
   local x1, y1 = ModelPos(to)
@@ -4256,7 +4289,8 @@ local function Help()
     "/bisgamba go           stop taking joins, start rolling now",
     "/bisgamba join         join / leave somebody else's table (types 1 / -1)",
     "/bisgamba roll         roll the right range",
-    "/bisgamba view [2d|3d]  switch between 2D and 3D portraits",
+    "/bisgamba view [2d|3d|table]  2D portraits, 3D portraits, or everyone around one table",
+    "/bisgamba table [big | demo [n|round|off]]  the table view; big; pretend people to look at",
     "/bisgamba end          settle with the rolls in / close the table",
     "/bisgamba nudge        name the people still to roll, in chat",
     "/bisgamba remind N     seconds before the straggler reminder (0 = off)",
@@ -4317,8 +4351,15 @@ local function Slash(msg)
   elseif cmd == "join" or cmd == "leave" then UI:Show(); Game.JoinMe()
   elseif cmd == "view" then
     local v = rest:lower()
-    if v ~= "2d" and v ~= "3d" then v = (View() == "2d") and "3d" or "2d" end
+    if v ~= "2d" and v ~= "3d" and v ~= "table" then v = (View() == "2d") and "3d" or "2d" end
     db.view = v; Print("view: " .. v); UI:Refresh()
+  elseif cmd == "table" and G.Table then
+    -- THE TABLE VIEW (Table.lua): /bisgamba table, table big, table demo [n | round | off]
+    local sub, arg = rest:match("^(%S*)%s*(.-)$")
+    sub = (sub or ""):lower()
+    if sub == "demo" then G.Table.Demo(arg)
+    elseif sub == "big" then db.view = "table"; UI:Show(); UI:Refresh(); G.Table.SetBig(not G.Table.big)
+    else db.view = "table"; Print("view: table"); UI:Show(); UI:Refresh() end
   elseif cmd == "paid" then
     local a, b = rest:match("^(%S+)%s+(%S+)$")
     local d = a and FindDebt(Bare(a), Bare(b))

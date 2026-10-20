@@ -198,6 +198,15 @@ function Frame:SetColorTexture(r, g, b, a)
 end
 function Frame:SetFrameLevel(l) self.level = l end
 function Frame:GetFrameLevel() return self.level or 1 end
+-- the table view's big window (20 Oct 2026): strata and scale kept, as the client keeps them; where a
+-- frame is on screen is unknown (nil) until a test says - the client's answer before layout
+function Frame:SetFrameStrata(s) self.strata = s end
+function Frame:GetFrameStrata() return self.strata or "MEDIUM" end
+function Frame:SetScale(s) if type(s) ~= "number" or s <= 0 then error("SetScale needs a positive number") end self.scale = s end
+function Frame:GetScale() return self.scale or 1 end
+function Frame:GetEffectiveScale() return self.scale or 1 end
+function Frame:GetLeft() return self.left end
+function Frame:GetTop() return self.top end
 -- runTimers() fires everything; runTimers(n) only fires timers set for <= n
 -- seconds, so a long countdown can be left ticking while short ones drain.
 local function runTimers(maxDelay)
@@ -345,9 +354,10 @@ do
   fh:close()
 end
 assert(#TOC >= 2, "the TOC lists files")
--- Deathroll.lua (16 Oct 2026) builds on BiSGamba.lua's kit, so it comes straight after it
-assert(TOC[#TOC - 2] == "BiSGamba.lua" and TOC[#TOC - 1] == "Deathroll.lua" and TOC[#TOC] == "API.lua",
-  "BiSGamba.lua, then Deathroll.lua, then API.lua (BiSGambaAPI) last - it loads after everything it calls")
+-- Deathroll.lua (16 Oct 2026) and Table.lua (20 Oct) build on BiSGamba.lua's kit, so they come straight after it
+assert(TOC[#TOC - 3] == "BiSGamba.lua" and TOC[#TOC - 2] == "Deathroll.lua" and TOC[#TOC - 1] == "Table.lua"
+  and TOC[#TOC] == "API.lua",
+  "BiSGamba.lua, then Deathroll.lua and Table.lua, then API.lua (BiSGambaAPI) last - it loads after everything it calls")
 for _, f in ipairs(TOC) do
   local fn = assert(loadfile(f), "TOC lists a file that does not exist: " .. f)
   fn("BiSGamba")
@@ -564,6 +574,107 @@ do
   from.model.shown = hid
   from.cell.GetLeft, from.cell.GetTop, to.cell.GetLeft, to.cell.GetTop = nil, nil, nil, nil
   SlashCmdList.BISGAMBA("view 2d"); G.UI:Refresh()
+end
+
+---------------------------------------------------------------- the table (Table.lua)
+-- Arn, 20 Oct 2026: "Rethink the big gamba window with the table with 3d models moving ... have them if they
+-- don't have the addon ... standing around gambling around a table. That window can still start small
+-- because of raids ... full screen like our other survivor window with back drops"
+do
+  local Tb, K = G.Table, G.Kit
+  SlashCmdList.BISGAMBA("view table"); G.UI:Refresh()
+  local me = K.MyName()
+  local list = Tb.List()
+  local names = {}
+  for _, a in ipairs(list) do names[a.name] = true end
+  local all = true
+  for _, n in ipairs(G.Game.order) do if not names[n] then all = false end end
+  check(all and names[me], "the table view: everyone at the round stands in the room - you too")
+  local grid = false
+  for _, s in ipairs(G.UI.seats) do if s.person then grid = true end end
+  check(not grid and Tb.stage.shown, "no grid: the seats are empty, the stage is up")
+  local mine = Tb.ActorOf(me)
+  local _, _, dMe = Tb.ToStage(mine.x, mine.y)
+  local front = true
+  for _, a in ipairs(list) do
+    local _, _, d = Tb.ToStage(a.x, a.y)
+    if d > dMe + 1e-9 then front = false end
+  end
+  check(front and math.abs(dMe - (500 + Tb.R_SEAT) / 1000) < 1e-6, "the room is turned: you stand at the front")
+  local behind, ahead
+  for _, a in ipairs(list) do
+    local _, _, d = Tb.ToStage(a.x, a.y)
+    if d < 0.5 then behind = a elseif d > 0.5 then ahead = a end
+  end
+  local tl = Tb.tableFrame:GetFrameLevel()
+  check((not behind or behind.f:GetFrameLevel() < tl) and ahead and ahead.f:GetFrameLevel() > tl,
+    "people behind the table draw behind it, people in front over it")
+  check(mine.how and mine.model.model, "your body asked for the same way as the seats': " .. tostring(mine.model.model))
+  local f = G.UI.frame
+  check(math.abs(f.w / f.h - 1.43) < 0.02, "the window keeps the BiS shape: " .. f.w .. "x" .. f.h)
+  -- CLICK THE FLOOR: you walk there - and nothing ticks once you stand
+  Tb.stage.left, Tb.stage.top = 100, 500
+  local keepCursor = _G.GetCursorPosition
+  _G.GetCursorPosition = function() return 100 + Tb.SW * 0.85, 500 - Tb.SH * 0.95 end
+  local x, y = Tb.ClickFloor()
+  _G.GetCursorPosition = keepCursor
+  local mover = Tb.mover
+  check(x and mine.walking and mover.scripts.OnUpdate, "a click on the floor: you set off")
+  mover.scripts.OnUpdate(mover, 0.05)
+  check(mine.model.anim == 5, "running")
+  for _ = 1, 80 do if mover.scripts.OnUpdate then mover.scripts.OnUpdate(mover, 0.1) end end
+  check(not mine.walking and math.abs(mine.x - x) < 1 and mine.model.anim == 0 and mover.scripts.OnUpdate == nil,
+    "there: standing again, and nothing ticks")
+  G.UI:Refresh()
+  check(math.abs(mine.x - x) < 1, "a refresh leaves you where you walked")
+  local cx, cy = Tb.Clamp(500, 510)
+  check(math.sqrt((cx - 500) ^ 2 + (cy - 500) ^ 2) >= Tb.R_TABLE + 39, "a click on the table: you stop at its edge")
+  -- THE PAY WALK, across the room: the loser up to the winner, begs, back
+  local a, b
+  for _, act in ipairs(list) do if act ~= mine then if not a then a = act elseif not b then b = act end end end
+  local hx = a.x
+  check(G.UI:PayWalk(a, b, 0), "a pay walk in the table view")
+  local begged = false
+  for _ = 1, 120 do
+    if mover.scripts.OnUpdate then mover.scripts.OnUpdate(mover, 0.1) end
+    if a.model.anim == G.ANIM.beg then begged = true end
+  end
+  check(begged and not a.walking and math.abs(a.x - hx) < 1, "up to the winner, a beg, and back where they were")
+  -- BIG, and small again; a fight takes it back
+  UIParent.w, UIParent.h = 1366, 768
+  Tb.SetBig(true)
+  check(Tb.big and f:GetFrameStrata() == "FULLSCREEN_DIALOG" and f:GetScale() > 1 and Tb.back.shown,
+    "big: over everything, bigger, a dark backdrop: " .. f:GetScale())
+  G.UI:CombatHide()
+  check(not Tb.big and f:GetFrameStrata() == "MEDIUM" and f:GetScale() == (BiSGambaDB.scale or 1) and not Tb.back.shown,
+    "a fight: small again at once")
+  if G.UI.pendingShow then G.UI:CombatShow() end
+  -- THE DEMO: pretend people, a pretend round - drawing only
+  local sentBefore = #addon
+  local roundsBefore = #(BiSGambaDB.rounds or {})
+  SlashCmdList.BISGAMBA("table demo 5")
+  check(#Tb.List() == 6, "table demo 5: five pretend people and you")
+  local hi, lo = Tb.DemoRound()
+  check(hi and lo and Tb.ActorOf(lo).walking, "a pretend round: the lowest walks over to pay")
+  check(#addon == sentBefore and #(BiSGambaDB.rounds or {}) == roundsBefore, "and nothing is sent, nothing is booked")
+  for _ = 1, 120 do if mover.scripts.OnUpdate then mover.scripts.OnUpdate(mover, 0.1) end end
+  -- COST: a second of six people walking at once asks the client nothing but the models' own calls
+  do
+    local Cost = dofile("../_bisdev/dev/cost.lua")
+    for _, act in ipairs(Tb.List()) do Tb.WalkTo(act, 500 + math.random(-300, 300), 900) end
+    local n, by = Cost.Count(function() for _ = 1, 60 do if mover.scripts.OnUpdate then mover.scripts.OnUpdate(mover, 1 / 60) end end end)
+    check(n <= 10, "a second of six walkers asks the client at most 10 things: " .. n .. " (" .. Cost.Top(by, 3) .. ")")
+    for _ = 1, 100 do if mover.scripts.OnUpdate then mover.scripts.OnUpdate(mover, 0.1) end end
+    -- measured 20 Oct: 430 - 43 a refresh, nearly all the window's own name questions (Ambiguate, UnitName)
+    -- that every view asks; a refresh comes on an event, never a frame. Budget 500.
+    n, by = Cost.Count(function() for _ = 1, 10 do G.UI:Refresh() end end)
+    check(n <= 500, "ten refreshes of the table view: at most 500 client questions: " .. n .. " (" .. Cost.Top(by, 3) .. ")")
+  end
+  SlashCmdList.BISGAMBA("table demo off")
+  check(Tb.demo == nil, "demo off")
+  fitsIn(BiSGambaFrame, "the table view")
+  SlashCmdList.BISGAMBA("view 3d"); G.UI:Refresh()
+  check(not Tb.stage.shown, "back to 3d: the room goes")
 end
 
 ---------------------------------------------------------------- round 2: ties
@@ -1043,7 +1154,10 @@ runTimers()
 check(sent("OPEN\t60") and sent("JOIN\tKumsecration") and sent("GO") and sent("ROLL\tKumlust\t30"), "HI replays the table")
 -- views
 for _, v in ipairs({ "2d", "3d" }) do SlashCmdList.BISGAMBA("view " .. v); G.UI:Refresh(); check(BiSGambaDB.view == v, "view " .. v) end
-SlashCmdList.BISGAMBA("view table"); check(BiSGambaDB.view ~= "table", "no table view any more")
+-- the TABLE view is back (20 Oct 2026, Arn: everyone in 3D around one round table - Table.lua); the old
+-- grid "table" was another thing, gone long ago
+SlashCmdList.BISGAMBA("view table"); check(BiSGambaDB.view == "table", "view table: everyone around one table")
+SlashCmdList.BISGAMBA("view 3d"); G.UI:Refresh()
 SlashCmdList.BISGAMBA("view 2d"); SlashCmdList.BISGAMBA("view"); check(BiSGambaDB.view == "3d", "cycle 2d->3d")
 SlashCmdList.BISGAMBA("view"); check(BiSGambaDB.view == "2d", "cycle 3d->2d")
 -- the window must be exactly the same size in both views

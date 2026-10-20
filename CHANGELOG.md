@@ -1,5 +1,9 @@
 # BiS Gamba - Changelog
 
+## Unreleased
+
+- **The table view.** A third view beside 2D and 3D: everyone at the round stands in 3D around one round table, and the room is turned so you stand at the front. Players without BiS Gamba stand there too - they roll, cheer, cry and pay like everyone else. Click the floor and you walk there; the loser walks across the room to the winner, begs, and walks back. It opens small for raids; the square in its corner makes it big, over everything on a dark backdrop, and a fight takes it back to small. `/bisgamba table demo 8` seats pretend people to look at, and `/bisgamba table demo round` plays a pretend round - nothing sent, nothing booked. (For now your walking shows on your screen only; telling the others where you walk comes next.)
+
 ## 1.7.1
 
 - **BiS addons can talk to other players on Forever again.** The game wrongly says addon messages are restricted, and the shared BiS code believed it, so nothing this addon sends to other players went out. It does now - and your guild's BiS Guild map shows where you are (outside instances; `/biscomm share off` turns that off).
