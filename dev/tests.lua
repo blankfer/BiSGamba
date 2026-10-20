@@ -620,6 +620,14 @@ do
   _G.GetCursorPosition = keepCursor
   local mover = Tb.mover
   check(x and mine.walking and mover.scripts.OnUpdate, "a click on the floor: you set off")
+  -- TO THE EDGES (Arn, 21 Oct: "i can walk around it but not to the edges of the screen")
+  local csx, csy = Tb.ToStage(x, y)
+  check(math.abs(csx - Tb.SW * 0.85) < 1 and math.abs(csy - Tb.SH * 0.95) < 1,
+    "a click near the corner walks you there, not to a ring round the table: " .. csx .. "," .. csy)
+  local fl, ft = Tb.Floor()
+  local esx, esy = Tb.ToStage(Tb.Clamp(Tb.FromStage(-50, -50)))
+  check(math.abs(esx - fl) < 1 and math.abs(esy - ft) < 1 and ft >= Tb.MODEL_H * 0.72 * Tb.k,
+    "past the edge: you stop at it, the whole model still on the stage")
   mover.scripts.OnUpdate(mover, 0.05)
   check(mine.model.anim == 5, "running")
   for _ = 1, 80 do if mover.scripts.OnUpdate then mover.scripts.OnUpdate(mover, 0.1) end end

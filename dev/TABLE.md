@@ -25,6 +25,9 @@ Arn, 20 Oct:
 **Walking.**
 - Click the floor and you walk there, kept off the table and inside the room. You stay there across refreshes.
 - Locally only for now; phase 2 tells everyone else.
+- The room is the whole stage you see (21 Oct, Arn: "not to the edges of the screen"), clamped in stage space so a
+  model is never cut off. The room turns per viewer, so a corner of yours can lie past someone else's edge:
+  `Tb.Place` draws any spot past the edge at the edge.
 
 **The pay walk crosses the room.** The loser walks up to the winner wherever they stand, begs, and walks back (`Tb.PayWalk`; `UI:PayWalk` hands actors to it).
 

@@ -67,12 +67,26 @@ function Tb.SeatSpot(i, n)
   return 500 + Tb.R_SEAT * math.sin(a), 500 + Tb.R_SEAT * math.cos(a), a
 end
 
+--- The part of the stage a model's feet may stand on: a model's width in from the sides, its height down from
+--- the top (so it is never cut off), a little up from the bottom.
+function Tb.Floor()
+  local k = Tb.k or 1
+  return Tb.MODEL_W * 0.6 * k, Tb.MODEL_H * 0.9 * k, Tb.SW - Tb.MODEL_W * 0.6 * k, Tb.SH - 4 * k
+end
+
 --- A spot kept on the floor: off the table, inside the room.
+--- TO THE EDGES (Arn, 21 Oct: "i can walk around it but not to the edges of the screen"): the room is the
+--- whole stage you see, not a ring round the table (Tb.R_FLOOR is only the fallback before there is a stage).
 function Tb.Clamp(x, y)
+  if Tb.SW and Tb.SH then
+    local sx, sy = Tb.ToStage(x, y)
+    local l, t, r, b = Tb.Floor()
+    x, y = Tb.FromStage(math.max(l, math.min(r, sx)), math.max(t, math.min(b, sy)))
+  end
   local dx, dy = x - 500, y - 500
   local d = math.sqrt(dx * dx + dy * dy)
   if d < 1 then return 500, 500 + Tb.R_TABLE + 40 end
-  local r = math.max(Tb.R_TABLE + 40, math.min(Tb.R_FLOOR, d))
+  local r = math.max(Tb.R_TABLE + 40, Tb.SW and d or math.min(Tb.R_FLOOR, d))
   return 500 + dx / d * r, 500 + dy / d * r
 end
 
@@ -203,6 +217,9 @@ end
 --- Put an actor where it stands: its frame at its feet, sized and layered by how near it is.
 function Tb.Place(a)
   local sx, sy, depth = Tb.ToStage(a.x, a.y)
+  -- a spot past this room's edge (the room turned since, or someone else's corner) is drawn at the edge
+  local l, t, r, b = Tb.Floor()
+  sx, sy, depth = math.max(l, math.min(r, sx)), math.max(t, math.min(b, sy)), math.max(0, math.min(1, depth))
   local s = (0.72 + 0.42 * depth) * Tb.k
   local w, h = Tb.MODEL_W * s, Tb.MODEL_H * s
   a.f:SetSize(w, h)
