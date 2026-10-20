@@ -17,9 +17,11 @@ Frame.__index = function(t, k)
   if type(k) == "string" and k:match("^%u") then return function() return nil end end
   return nil
 end
+local MODELS = {}                 -- every 3D model made, for a window's scale change to reach
 local function newFrame(kind, name, parent)
   local f = setmetatable({ kind = kind, name = name, parent = parent, scripts = {}, shown = true, w = 100, h = 100 }, Frame)
   if name then _G[name] = f end
+  if kind == "DressUpModel" or kind == "PlayerModel" then MODELS[#MODELS + 1] = f end
   return f
 end
 function Frame:SetScript(ev, fn) self.scripts[ev] = fn end
@@ -89,6 +91,8 @@ function Frame:RegisterEvent(e)
 end
 function Frame:SetAnimation(a) self.anim = a end
 function Frame:SetFacing(r) self.facing = r end
+function Frame:SetPortraitZoom(z) self.zoom = z end
+function Frame:SetPosition(x, y, z) self.pos = { x, y, z } end
 function Frame:SetUnit(u) if u == "raid99" then error("bad unit") end self.unit = u; self.model = "unit:" .. u end
 function Frame:SetCreature(id) self.model = "npc:" .. id end
 function Frame:SetDisplayInfo(id) self.model = "display:" .. id end
@@ -202,7 +206,18 @@ function Frame:GetFrameLevel() return self.level or 1 end
 -- frame is on screen is unknown (nil) until a test says - the client's answer before layout
 function Frame:SetFrameStrata(s) self.strata = s end
 function Frame:GetFrameStrata() return self.strata or "MEDIUM" end
-function Frame:SetScale(s) if type(s) ~= "number" or s <= 0 then error("SetScale needs a positive number") end self.scale = s end
+-- A WINDOW'S SCALE CHANGE RESETS THE CAMERA of every model inside it to the client's own framing, a close
+-- portrait (Arn's screenshot, 21 Oct 2026: the big table showed "Chain" cut off at the chest; UNVERIFIED
+-- beyond that one picture) - so a pose set before the change is lost.
+function Frame:SetScale(s)
+  if type(s) ~= "number" or s <= 0 then error("SetScale needs a positive number") end
+  self.scale = s
+  for _, m in ipairs(MODELS) do
+    local p = m.parent
+    while p and p ~= self do p = p.parent end
+    if p == self then m.zoom, m.pos = "reset", nil end
+  end
+end
 function Frame:GetScale() return self.scale or 1 end
 function Frame:GetEffectiveScale() return self.scale or 1 end
 function Frame:GetLeft() return self.left end
@@ -653,6 +668,13 @@ do
   Tb.SetBig(true)
   check(Tb.big and f:GetFrameStrata() == "FULLSCREEN_DIALOG" and f:GetScale() > 1 and Tb.back.shown,
     "big: over everything, bigger, a dark backdrop: " .. f:GetScale())
+  -- the whole body again after the scale change (Arn: "full screen 3d model gets cut off")
+  runTimers(1)
+  local posed = true
+  for _, act in ipairs(Tb.List()) do
+    if act.f:IsShown() and not (act.model.zoom == 0 and act.model.pos) then posed = false end
+  end
+  check(posed, "big: every model posed again, the whole body (the scale change reset their cameras)")
   G.UI:CombatHide()
   check(not Tb.big and f:GetFrameStrata() == "MEDIUM" and f:GetScale() == (BiSGambaDB.scale or 1) and not Tb.back.shown,
     "a fight: small again at once")

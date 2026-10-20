@@ -439,6 +439,16 @@ end
 -- big
 --------------------------------------------------------------------
 
+--- Everyone's body again, posed for the table. A window's scale change resets each model's camera to the
+--- client's own close portrait (Arn, 21 Oct 2026: "full screen 3d model gets cut off" - Chain showed from the
+--- chest up), so after one the models are set again, at once and once more a moment later, after the client
+--- has drawn the new size.
+function Tb.Repose()
+  for _, a in pairs(Tb.actors) do
+    if a.name and a.f:IsShown() then K.ApplyModel(a) end
+  end
+end
+
 --- Big (on top of everything, half as big again at most, a dark backdrop) or small (where it was).
 --- Never remembered: the window opens small, for raids. A fight takes it back to small (UI:CombatHide).
 function Tb.SetBig(on)
@@ -478,6 +488,8 @@ function Tb.SetBig(on)
     local d = db()
     if d.x then f:SetPoint(d.point or "CENTER", UIParent, d.rel or d.point or "CENTER", d.x, d.y) else f:SetPoint("CENTER") end
   end
+  Tb.Repose()
+  if C_Timer and C_Timer.After then C_Timer.After(0.1, Tb.Repose) end
   return on
 end
 
