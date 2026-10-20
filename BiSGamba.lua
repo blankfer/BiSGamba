@@ -360,8 +360,8 @@ end
 -- saved variables
 ----------------------------------------------------------------------------
 local defaults = {
-  wager = 100, payDiff = true, autoJoin = false, announce = true, grace = 3, dbver = 6, boardScope = "guild",
-  scale = 1, view = "2d", portrait = 0.75, zoom = 0, z = 0, minimapAngle = 200, minimap = true, autoOpen = true, remind = 30, whisper = true, autoCopy = true, lastCall = 10, sound = true, soundChannel = "SFX", voice = "auto", neverOpen = false,
+  wager = 100, payDiff = true, autoJoin = false, announce = true, grace = 3, dbver = 7, boardScope = "guild",
+  scale = 1, view = "3d", portrait = 0.75, zoom = 0, z = 0, minimapAngle = 200, minimap = true, autoOpen = true, remind = 30, whisper = true, autoCopy = true, lastCall = 10, sound = true, soundChannel = "SFX", voice = "auto", neverOpen = false,
   combat = true,       -- hide the window while you are in combat
   users = {},          -- [name] = when we last heard their addon
   tradeDelay = 1.2, npc = {}, wisp = WISP,
@@ -387,7 +387,11 @@ local function InitDB()
   -- 1.0 seated anyone who rolled; rolls from people not at the table are ignored now
   if ver < 2 then db.autoJoin = false end
   if ver < 3 then db.view = "2d" end
-  if db.view ~= "2d" and db.view ~= "3d" then db.view = "2d" end
+  -- 3D BY DEFAULT (Arn, 19 Oct: the table's models walk now - "3D by default"). Everyone's saved "2d"
+  -- was the old default written in, not a choice anyone can be told apart by: all go 3D once, and
+  -- the options' 2D button still takes them back.
+  if ver < 7 then db.view = "3d" end
+  if db.view ~= "2d" and db.view ~= "3d" then db.view = "3d" end
   -- stats used to be a bare net figure; keep it, give it somewhere to grow
   if ver < 4 then
     for name, v in pairs(db.stats) do
@@ -2416,6 +2420,23 @@ G.Kit = {
   UnitFor = UnitFor, GroupUnits = GroupUnits, ANIM = ANIM, WISP = WISP,
 }
 
+-- THE STAND-INS BY DISPLAY ID (19 Oct 2026). The NPC table above asked for creatures by npc id, and two
+-- were wrong: Wowhead's own model data makes "Innkeeper Firebrew" (dwarf woman) a man, and the troll
+-- woman was Vol'jin. And a creature asked for by npc id draws NOTHING the first time (BiS Shell's
+-- SURVIVOR probe). These sixteen are one plain townsperson per race and sex, each race and sex read
+-- off Wowhead's model-viewer data, all sixteen drawn on Forever (BiS Shell `Test-Model -Folk`, Arn's
+-- screenshot) - and a display id draws at once. [2] man, [3] woman, as UnitSex says.
+local DISPLAY = {
+  Human = { [2] = 1291, [3] = 5444 }, Orc = { [2] = 5705, [3] = 5706 }, Dwarf = { [2] = 3434, [3] = 3066 },
+  NightElf = { [2] = 5440, [3] = 5439 }, Scourge = { [2] = 5449, [3] = 8190 }, Tauren = { [2] = 5486, [3] = 5487 },
+  Gnome = { [2] = 7028, [3] = 7119 }, Troll = { [2] = 4072, [3] = 4358 },
+}
+G.DISPLAY = DISPLAY
+local function DisplayFor(race, sex)
+  local t = DISPLAY[race]
+  return t and t[(sex == 3) and 3 or 2]
+end
+
 local function NpcFor(race, sex)
   sex = (sex == 3) and 3 or 2
   local o = db.npc and db.npc[race] and db.npc[race][sex]
@@ -2424,7 +2445,7 @@ local function NpcFor(race, sex)
   return t and (t[sex] or t[2])
 end
 
-local function View() return db.view or "2d" end
+local function View() return db.view or "3d" end
 
 local function Pose(seat)
   local m = seat.model
@@ -2479,6 +2500,12 @@ local function ApplyModel(seat)
     ok = pcall(m.SetUnit, m, unit)
     if ok then seat.how = "live" end
   end
+  -- out of range: a stand-in of their race and sex - by display id first (checked, draws at once),
+  -- the old npc table only for a race it does not cover, or a player's own pick in db.npc
+  if not ok and p.race and not (db.npc and db.npc[p.race]) and DisplayFor(p.race, p.sex) then
+    ok = pcall(m.SetDisplayInfo, m, DisplayFor(p.race, p.sex))
+    if ok then seat.how = "npc" end
+  end
   if not ok and p.race and NpcFor(p.race, p.sex) then
     ok = pcall(m.SetCreature, m, NpcFor(p.race, p.sex))
     if ok then seat.how = "npc" end
@@ -2501,6 +2528,7 @@ local function ApplyArt(seat)
 end
 
 function UI:Emote(seat, anim, hold)
+  if seat.walking then return end                   -- a pay walk plays out first (UI:WalkTick)
   seat.anim = anim
   pcall(seat.model.SetAnimation, seat.model, anim)
   seat.restAt = GetTime() + (hold or 4)
@@ -3211,7 +3239,7 @@ function UI:Build()
     local every = { self.mySeat }               -- yours too: a cheer on the big seat must end as well
     for _, s in ipairs(self.seats) do every[#every + 1] = s end
     for _, seat in ipairs(every) do
-      if seat.person and seat.restAt and now > seat.restAt then
+      if seat.person and seat.restAt and now > seat.restAt and not seat.walking then
         seat.restAt = nil; seat.anim = ANIM.stand
         pcall(seat.model.SetAnimation, seat.model, ANIM.stand)
         seat.mood:SetText("")
@@ -3793,6 +3821,117 @@ function UI:OnRoll(name, roll)
   else self:Emote(seat, ANIM.talk, 2) end
 end
 
+----------------------------------------------------------------------------
+-- THE PAY WALK (Arn, 19 Oct 2026: "bis gamba we make the 3d models move around ... def interact with
+-- other 3d models" -> "Pay walk"). When the round settles, every loser's model runs from their seat to
+-- the winner's, begs, and runs back. No message: every client already knows who won and who pays, so
+-- every table plays the same walk. A 3D model is not clipped by its seat, so it can cross the table.
+-- One driver frame ticks only while somebody is walking.
+UI.WALK = { speed = 320, delay = 1.4, gap = 0.5, beg = 1.6 }
+UI.walks = {}
+G.UI = UI                                            -- (the harness walks it)
+
+local function ModelPos(seat)
+  local c = seat.cell
+  local l, t, w = c:GetLeft(), c:GetTop(), c:GetWidth()
+  if not (l and t and w) then return nil end
+  return l + w / 2, t
+end
+
+--- One seat walks to another and back (delay: seconds before it sets off).
+function UI:PayWalk(from, to, delay)
+  if not (from and to and from ~= to and from.model:IsShown()) then return false end
+  local x0, y0 = ModelPos(from)
+  local x1, y1 = ModelPos(to)
+  if not (x0 and x1) then return false end
+  local w = { seat = from, dx = x1 - x0, dy = y1 - y0, x = 0, y = 0, phase = "wait", t = delay or 0 }
+  self.walks[#self.walks + 1] = w
+  from.walking = true
+  if not self.walker then
+    self.walker = CreateFrame("Frame")
+    G._walker = self.walker
+  end
+  self.walker:SetScript("OnUpdate", function(_, e) UI:WalkTick(e) end)
+  return true
+end
+
+local function placeWalker(w)
+  local s = w.seat
+  s.model:ClearAllPoints()
+  s.model:SetPoint("TOP", s.cell, "TOP", w.x, -ROLL_H + w.y)
+end
+
+local function setOff(w, tx, ty)
+  local vx, vy = tx - w.x, ty - w.y
+  w.seat.anim = 5                                    -- run (SURVIVOR's, seen on Forever)
+  pcall(w.seat.model.SetAnimation, w.seat.model, 5)
+  pcall(w.seat.model.SetFacing, w.seat.model, math.atan2(vx, -vy))
+end
+
+function UI:WalkTick(elapsed)
+  local dt = math.min(tonumber(elapsed) or 0, 0.1)
+  local step = self.WALK.speed * dt
+  local i = 1
+  while i <= #self.walks do
+    local w = self.walks[i]
+    local done = false
+    if w.phase == "wait" or w.phase == "beg" then
+      w.t = w.t - dt
+      if w.t <= 0 then
+        if w.phase == "wait" then w.phase = "go" setOff(w, w.dx, w.dy)
+        else w.phase = "back" setOff(w, 0, 0) end
+      end
+    else
+      local tx, ty = (w.phase == "go") and w.dx or 0, (w.phase == "go") and w.dy or 0
+      local ex, ey = tx - w.x, ty - w.y
+      local d = math.sqrt(ex * ex + ey * ey)
+      if d <= step then
+        w.x, w.y = tx, ty
+        if w.phase == "go" then
+          w.phase, w.t = "beg", self.WALK.beg       -- at the winner's seat: beg, then back
+          w.seat.anim = ANIM.beg
+          pcall(w.seat.model.SetAnimation, w.seat.model, ANIM.beg)
+        else
+          done = true
+        end
+      else
+        w.x, w.y = w.x + ex / d * step, w.y + ey / d * step
+      end
+      placeWalker(w)
+    end
+    if done then
+      local s = w.seat
+      s.walking, s.anim = nil, ANIM.stand
+      s.model:ClearAllPoints()
+      s.model:SetPoint("TOP", s.cell, "TOP", 0, -ROLL_H)
+      Pose(s)
+      table.remove(self.walks, i)
+    else
+      i = i + 1
+    end
+  end
+  if #self.walks == 0 and self.walker then self.walker:SetScript("OnUpdate", nil) end
+end
+
+--- Everyone who pays walks to whoever they pay. A team game pairs them in turn order.
+function UI:PayWalks(winner, loser)
+  local W = self.WALK
+  if Game.team and Game.winTeam then
+    local won, lost = {}, {}
+    for _, name in ipairs(Game.order) do
+      local s = SeatOf(name)
+      if s and Game.teamOf[name] then
+        if Game.teamOf[name] == Game.winTeam then won[#won + 1] = s else lost[#lost + 1] = s end
+      end
+    end
+    for k, s in ipairs(lost) do
+      if #won > 0 then self:PayWalk(s, won[(k - 1) % #won + 1], W.delay + (k - 1) * W.gap) end
+    end
+    return #lost
+  end
+  return self:PayWalk(SeatOf(loser), SeatOf(winner), W.delay) and 1 or 0
+end
+
 -- the round is settled: everybody reacts by where they landed
 function UI:OnResult(winner, loser)
   -- a team game: one side cheers, the other cries, all of them at once
@@ -3807,6 +3946,7 @@ function UI:OnResult(winner, loser)
         self:Emote(seat, Game.teamOf[name] == Game.winTeam and ANIM.cheer or ANIM.cry, 8)
       end
     end
+    self:PayWalks()                                      -- then the losing side walks over to pay
     return
   end
   self:Refresh()
@@ -3827,6 +3967,7 @@ function UI:OnResult(winner, loser)
       end
     end
   end
+  if winner and loser and winner ~= loser then self:PayWalks(winner, loser) end
 end
 
 ----------------------------------------------------------------------------

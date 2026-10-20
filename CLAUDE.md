@@ -5,13 +5,13 @@ Read ../_bisdev/CLAUDE.md first.
 - `BiSGamba.toc`: the load order, and the only place the version lives (`## Version`). `release.ps1`, the harness and LibBiSComm all read it from there.
 - `BiSGamba.lua`: the whole addon, about 3.9k lines, split into sections by `----` banners:
   - theme fallback and sounds
-  - DB defaults and migrations (`dbver`, currently 6)
+  - DB defaults and migrations (`dbver`, currently 7: 3D the default view, 19 Oct 2026)
   - guild and roll parsing
   - `Ledger`
   - `Comm` (the `BiSGamba` addon-message prefix)
   - `Game` (the state machine `IDLE → JOIN → ROLL → DONE`)
   - round-ledger adoption and `Trade`
-  - `UI` (2d/3d seat grid)
+  - `UI` (2d/3d seat grid; stand-ins by checked display id, `DISPLAY`; the pay walk, `UI:PayWalk`)
   - Options (the `Own` owners)
   - slash commands (`/bisgamba` main; `/gamba`, `/gamble` kept as aliases)
 - `Deathroll.lua` (16 Oct 2026): one-on-one deathroll, loaded straight after `BiSGamba.lua` and built on its `G.Kit` (buttons, names, money words, db). Party, raid or guild only, by whole name; ops `DRASK/DRYES/DRNO/DRROLL/DRBYE` whispered on Gamba's prefix (`Game.OnComm` hands anything starting `DR` to it before its own group-only check). The wager goes through `Ledger.Add` and `AddRound` (round `mode = "dr"`).

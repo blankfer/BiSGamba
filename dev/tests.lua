@@ -88,6 +88,7 @@ function Frame:RegisterEvent(e)
   self.events = self.events or {}; self.events[e] = true
 end
 function Frame:SetAnimation(a) self.anim = a end
+function Frame:SetFacing(r) self.facing = r end
 function Frame:SetUnit(u) if u == "raid99" then error("bad unit") end self.unit = u; self.model = "unit:" .. u end
 function Frame:SetCreature(id) self.model = "npc:" .. id end
 function Frame:SetDisplayInfo(id) self.model = "display:" .. id end
@@ -398,16 +399,16 @@ check(type(BiSGambaDB.stats.Oldtimer) == "table" and BiSGambaDB.stats.Oldtimer.n
   "old net-only stats survive the upgrade")
 check(BiSGambaDB.base.Oldtimer and BiSGambaDB.base.Oldtimer.net == 250,
   "and are carried over as the base the rounds build on")
-check(BiSGambaDB.view == "2d", "the dead table view is migrated away")
+check(BiSGambaDB.view == "3d", "the dead table view is migrated away - to 3D, the default since dbver 7")
 check(BiSGambaDB.autoJoin == false, "autojoin migrated off")
-check(BiSGambaDB.dbver == 6, "stamped with the current version")
+check(BiSGambaDB.dbver == 7, "stamped with the current version")
 check(BiSGambaDB.soundChannel == "SFX", "the cues moved off the master channel")
 BiSGambaDB.stats = {}
 -- nothing the addon defines should leak into _G
 for _, name in ipairs({ "Stat", "PutMoney", "TradeMoneyNow", "nudged", "seated", "Trade", "Game", "UI" }) do
   check(_G[name] == nil, "no global named " .. name)
 end
-check(BiSGambaDB and BiSGambaDB.wager == 100 and BiSGambaDB.view == "2d", "defaults (2d view)")
+check(BiSGambaDB and BiSGambaDB.wager == 100 and BiSGambaDB.view == "3d", "defaults (3d view, since dbver 7)")
 check(ev.events.CHAT_MSG_SYSTEM and ev.events.TRADE_SHOW and ev.events.CHAT_MSG_RAID, "events registered")
 
 -- roll pattern
@@ -517,7 +518,7 @@ a = seatAnim("Kumsecration")
 check(a == 75 or a == 79 or a == 83 or a == 60 or a == 67 or a == 65, "third of four sweats: " .. tostring(a))
 SlashCmdList.BISGAMBA("view 3d"); G.UI:Refresh()
 local _, model = seatAnim("Kumsecration")
-check(model == "npc:5595", "out of range dwarf uses the guard: " .. tostring(model))
+check(model == "display:" .. G.DISPLAY.Dwarf[2], "out of range dwarf: the checked dwarf-man stand-in, by display id: " .. tostring(model))
 _, model = seatAnim("Dps2")
 check(model == "unit:raid2", "in range uses SetUnit: " .. tostring(model))
 SlashCmdList.BISGAMBA("view 2d"); G.UI:Refresh()
@@ -525,6 +526,45 @@ SlashCmdList.BISGAMBA("view 2d"); G.UI:Refresh()
 _G.__now = 1020
 G.UI.frame.scripts.OnUpdate(G.UI.frame, 0.1)
 check(seatAnim("Dps1") == 0, "back to standing")
+
+-- THE PAY WALK (Arn, 19 Oct: "make the 3d models move around ... def interact with other 3d models" ->
+-- "Pay walk"): the loser runs to the winner's seat, begs, runs back - every client plays it, no message
+do
+  SlashCmdList.BISGAMBA("view 3d"); G.UI:Refresh()
+  local function seatOf(name) for _, s in ipairs(allSeats()) do if s.person and s.person.name == name then return s end end end
+  local from, to = seatOf("Dps2"), seatOf("Dps1")
+  from.cell.GetLeft, from.cell.GetTop = function() return 100 end, function() return 300 end
+  to.cell.GetLeft, to.cell.GetTop = function() return 400 end, function() return 300 end
+  from.cell.w, to.cell.w = 60, 60
+  check(G.UI:PayWalk(from, to, 0.2), "a pay walk starts")
+  local walker = G._walker
+  check(walker.scripts.OnUpdate ~= nil and from.walking, "it ticks, and the seat is walking")
+  for _ = 1, 3 do walker.scripts.OnUpdate(walker, 0.1) end     -- (a frame is capped at 0.1 s)
+  check(from.model.anim == 5 and math.abs((from.model.facing or 99) - math.atan2(300, 0)) < 1e-6,
+    "off it goes: running, facing the winner's seat (to the right)")
+  G.UI:Emote(from, G.ANIM.cheer, 4)
+  check(from.model.anim == 5, "an emote does not stop a walk midway")
+  for _ = 1, 20 do if walker.scripts.OnUpdate then walker.scripts.OnUpdate(walker, 0.1) end end
+  check(from.model.anim == G.ANIM.beg, "at the winner's seat: begs")
+  local p = from.model.points[#from.model.points]
+  check(p and math.abs(p.x - 300) < 1, "standing at the winner's seat: " .. tostring(p and p.x))
+  for _ = 1, 40 do if walker.scripts.OnUpdate then walker.scripts.OnUpdate(walker, 0.1) end end
+  p = from.model.points[#from.model.points]
+  check(not from.walking and p and p.x == 0 and walker.scripts.OnUpdate == nil,
+    "then back to their own seat, and the walker stops ticking")
+  check(G.UI:PayWalk(from, from, 0) == false, "nobody walks to themselves")
+  -- the round's own end starts it: the loser walks to the winner
+  G.UI:OnResult("Dps1", "Dps2")
+  check(#G.UI.walks == 1 and G.UI.walks[1].seat == from and from.walking, "the round settles: Dps2 walks to Dps1")
+  for _ = 1, 80 do if walker.scripts.OnUpdate then walker.scripts.OnUpdate(walker, 0.1) end end
+  check(#G.UI.walks == 0 and not from.walking, "and is home again")
+  local hid = from.model.shown
+  from.model.shown = false
+  check(G.UI:PayWalk(from, to, 0) == false, "a seat not drawn in 3D does not walk")
+  from.model.shown = hid
+  from.cell.GetLeft, from.cell.GetTop, to.cell.GetLeft, to.cell.GetTop = nil, nil, nil, nil
+  SlashCmdList.BISGAMBA("view 2d"); G.UI:Refresh()
+end
 
 ---------------------------------------------------------------- round 2: ties
 SlashCmdList.BISGAMBA("start")
