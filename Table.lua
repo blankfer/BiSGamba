@@ -460,6 +460,12 @@ function Tb.SetBig(on)
   Tb.big = on or nil
   local scale = db().scale or 1
   if on then
+    -- the window closed while big (the X, Escape) takes the dark backdrop with it (Arn, 21 Oct 2026:
+    -- "when im in full screen and i close the window the screen stay dim")
+    if not Tb.hooked and f.HookScript then
+      f:HookScript("OnHide", function() if Tb.big then Tb.SetBig(false) end end)
+      Tb.hooked = true
+    end
     if not Tb.back then
       local b = CreateFrame("Button", nil, UIParent)
       b:SetAllPoints(UIParent)

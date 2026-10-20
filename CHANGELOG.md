@@ -3,6 +3,7 @@
 ## Unreleased
 
 - **The big table shows everyone whole.** Making the table view big cut the players off at the chest - the game reset each model's camera when the window grew. Every player is posed again after the switch, big or small.
+- **Closing the big table takes the dark backdrop with it.** Closing the window while it was big (the X, or Escape) left the whole screen dimmed.
 
 ## 1.8.0
 

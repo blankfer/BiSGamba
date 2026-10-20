@@ -26,8 +26,22 @@ local function newFrame(kind, name, parent)
 end
 function Frame:SetScript(ev, fn) self.scripts[ev] = fn end
 function Frame:GetScript(ev) return self.scripts[ev] end
-function Frame:Show() self.shown = true end
-function Frame:Hide() self.shown = false end
+function Frame:HookScript(ev, fn)
+  local old = self.scripts[ev]
+  self.scripts[ev] = old and function(...) old(...) fn(...) end or fn
+end
+-- the client fires OnShow / OnHide when a frame changes between shown and hidden (the X, Escape through
+-- UISpecialFrames, a Toggle): a window closed while big must take its backdrop with it
+function Frame:Show()
+  local was = self.shown
+  self.shown = true
+  if not was and self.scripts.OnShow then self.scripts.OnShow(self) end
+end
+function Frame:Hide()
+  local was = self.shown
+  self.shown = false
+  if was and self.scripts.OnHide then self.scripts.OnHide(self) end
+end
 function Frame:IsShown() return self.shown end
 function Frame:IsVisible() return self.shown end
 function Frame:GetPoint() return "CENTER", nil, "CENTER", 10, 20 end
@@ -679,6 +693,13 @@ do
   check(not Tb.big and f:GetFrameStrata() == "MEDIUM" and f:GetScale() == (BiSGambaDB.scale or 1) and not Tb.back.shown,
     "a fight: small again at once")
   if G.UI.pendingShow then G.UI:CombatShow() end
+  -- closed while big (the X, Escape): the dark backdrop goes with the window (Arn: "the screen stay dim")
+  if not f:IsShown() then G.UI:Show() end
+  Tb.SetBig(true)
+  f:Hide()
+  check(not Tb.big and not Tb.back.shown and f:GetFrameStrata() == "MEDIUM",
+    "closed while big: small again, no dark backdrop left over the screen")
+  G.UI:Show()
   -- THE DEMO: pretend people, a pretend round - drawing only
   local sentBefore = #addon
   local roundsBefore = #(BiSGambaDB.rounds or {})
