@@ -1,9 +1,10 @@
 # BiS Gamba - Changelog
 
-## Unreleased
+## 1.8.1
 
 - **The big table shows everyone whole.** Making the table view big cut the players off at the chest - the game reset each model's camera when the window grew. Every player is posed again after the switch, big or small.
 - **Closing the big table takes the dark backdrop with it.** Closing the window while it was big (the X, or Escape) left the whole screen dimmed.
+- **Carries the shared ride clock** (the BiS lib, version 15): ride a zeppelin or a boat with any BiS addon on and its timetable goes to your guild and group - for BiS Tools' ride card and Power Word: Shell's ZEPPELIN.EXE and HARBOR.EXE.
 
 ## 1.8.0
 
