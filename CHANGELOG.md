@@ -1,5 +1,9 @@
 # BiS Gamba - Changelog
 
+## Unreleased
+
+- **You show up in FojjiCore's windows.** A party member running FojjiCore now sees your level and experience in its Experience window and your campfire in its Campfires window, instead of "No Addon" (the shared BiS lib, version 16 - quiet if you run FojjiCore's Dungeon Journal yourself, which says the same).
+
 ## 1.8.1
 
 - **The big table shows everyone whole.** Making the table view big cut the players off at the chest - the game reset each model's camera when the window grew. Every player is posed again after the switch, big or small.
