@@ -2869,6 +2869,37 @@ do
   check(G.UI.drBtn ~= nil, "a deathroll button on the table")
   fitsIn(BiSGambaFrame, "the table with the deathroll button")
   D.frame:Hide()
+
+  -- THE RIGHT-CLICK CHALLENGE (Arn, 22 Oct: "when we right click him ... the option to challenge them to a death roll")
+  local made, hooks = {}, {}
+  local root = { CreateDivider = function() end,
+                 CreateButton = function(_, text, fn) made[#made + 1] = { text = text, fn = fn } end }
+  local realMenu, realGUN, realIsUnit, realExists = _G.Menu, _G.GetUnitName, _G.UnitIsUnit, _G.UnitExists
+  _G.Menu = { ModifyMenu = function(tag, fn) hooks[tag] = fn end }
+  _G.GetUnitName = function(u) return ({ party1 = "Frank G", party2 = "Dps2", target = "Stranger" })[u] end
+  _G.UnitIsUnit = function(a, b) return a == b end
+  _G.UnitExists = function(u) return u == "party1" or u == "party2" or u == "target" or u == "player" end
+  D.menusHooked = nil
+  check(D.HookMenus() and hooks.MENU_UNIT_PARTY and hooks.MENU_UNIT_TARGET and not hooks.MENU_UNIT_GUILD,
+        "hooked the players' menus - never the guild roster's")
+  local lib = _G.LibBiSComm
+  local keepPeers = lib.peers
+  lib.peers = { ["Frank G"] = { name = "Frank G", addons = { BiSGamba = "1.8.2" } },
+                Dps2 = { name = "Dps2", addons = { BiSTools = "0.16.0" } } }
+  hooks.MENU_UNIT_PARTY(nil, root, { unit = "party1" })
+  check(#made == 1 and made[1].text == "Challenge to a deathroll", "a guildmate with BiS Gamba: \"Challenge to a deathroll\"")
+  D.pick = nil
+  made[1].fn()
+  check(D.frame:IsShown() and D.pick == "Frank G", "the click opens the deathroll, Frank G on the other side")
+  D.frame:Hide()
+  hooks.MENU_UNIT_PARTY(nil, root, { unit = "party2" })
+  check(#made == 1, "a guildmate without BiS Gamba: no line (they could not answer)")
+  hooks.MENU_UNIT_TARGET(nil, root, { unit = "target" })
+  check(#made == 1, "a stranger: no line")
+  hooks.MENU_UNIT_PLAYER(nil, root, { unit = "player" })
+  check(#made == 1, "your own menu: no line")
+  lib.peers = keepPeers
+  _G.Menu, _G.GetUnitName, _G.UnitIsUnit, _G.UnitExists = realMenu, realGUN, realIsUnit, realExists
   GetNumGuildMembers, GetGuildRosterInfo, IsInGuild = realNum, realInfo, realIn
 end
 

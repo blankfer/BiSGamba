@@ -633,6 +633,59 @@ function D.Toggle()
   if D.frame and D.frame:IsShown() then D.frame:Hide() else D.Show() end
 end
 
+--------------------------------------------------------------------
+-- THE RIGHT-CLICK CHALLENGE (Arn, 22 Oct: "if a party member is in our party and has the add on when we right click
+-- him instead of them having to go into the power shell, they could just challenge him ... in the bis rivals bis pals
+-- style ... the option to challenge them to a death roll, and if they accept both people get the death roll
+-- window"). A player's menu gets "Challenge to a deathroll" when they are someone you can deathroll (group or
+-- guild, D.CanReach) AND the shared channel has heard their BiS Gamba. The click opens the window with their name
+-- in it - pick the wager, CHALLENGE. The game's own way in (Menu.ModifyMenu): a line added, nothing replaced;
+-- never the guild roster's menus (a line there left the game's promote/kick refused - BiS Tools learned it).
+--------------------------------------------------------------------
+D.MENUS = { "PARTY", "RAID_PLAYER", "RAID", "TARGET", "FOCUS", "PLAYER", "FRIEND" }
+
+--- The player a menu is about, by whole name (Forever's "Frank G"), when they run BiS Gamba and can be challenged.
+function D.MenuWho(ctx)
+  if type(ctx) ~= "table" then return nil end
+  local name
+  local okU, unit = pcall(function() return ctx.unit end)
+  if okU and type(unit) == "string" then
+    local okP, isPlayer = pcall(UnitIsPlayer, unit)
+    local okMe, me = pcall(UnitIsUnit, unit, "player")
+    if not (okP and isPlayer) or not okMe or me then return nil end
+    local okN, n = pcall(GetUnitName, unit, false)
+    name = okN and n or nil
+  else
+    local okN, n = pcall(function() return ctx.name end)
+    name = okN and n or nil
+  end
+  if type(name) ~= "string" or name == "" then return nil end
+  name = K.Bare(name)
+  if not D.CanReach(name) then return nil end
+  local lib = _G.LibBiSComm
+  local p = lib and lib.Peer and lib:Peer(name)
+  if not (p and p.addons and p.addons.BiSGamba) then return nil end
+  return name
+end
+
+function D.MenuLine(root, ctx)
+  if not (root and root.CreateButton) or D.Active() then return end
+  local who = D.MenuWho(ctx)
+  if not who then return end
+  if root.CreateDivider then root:CreateDivider() end
+  root:CreateButton("Challenge to a deathroll", function() D.Show(who) end)
+end
+
+function D.HookMenus()
+  if D.menusHooked or not (Menu and type(Menu.ModifyMenu) == "function") then return false end
+  D.menusHooked = true
+  for _, kind in ipairs(D.MENUS) do
+    pcall(Menu.ModifyMenu, "MENU_UNIT_" .. kind, function(_, root, ctx) D.MenuLine(root, ctx) end)
+  end
+  return true
+end
+K.After(0, function() D.HookMenus() end)
+
 --- /bisgamba dr [name]
 function D.Slash(rest)
   D.Show(rest and rest ~= "" and rest or nil)

@@ -1,5 +1,9 @@
 # BiS Gamba - Changelog
 
+## Unreleased
+
+- **Challenge to a deathroll from the right-click menu.** Right-click a party, raid or guild member who also runs BiS Gamba: "Challenge to a deathroll" opens the deathroll with them on the other side - pick the wager and challenge. No typing.
+
 ## 1.8.2
 
 - **You show up in FojjiCore's windows.** A party member running FojjiCore now sees your level and experience in its Experience window and your campfire in its Campfires window, instead of "No Addon" (the shared BiS lib, version 16 - quiet if you run FojjiCore's Dungeon Journal yourself, which says the same).
