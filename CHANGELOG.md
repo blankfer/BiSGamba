@@ -1,7 +1,8 @@
 # BiS Gamba - Changelog
 
-## Unreleased
+## 1.9.0
 
+- **The Deeprun Tram's timetable, for the whole guild.** With the shared BiS lib's new version, riding the Deeprun Tram with any BiS addon times it for your guild, the way the zeppelins and boats already are - BiS Tools' ride card and BiS Shell's TRAM-TRAK read it.
 - **Challenge to a deathroll from the right-click menu.** Right-click a party, raid or guild member who also runs BiS Gamba: "Challenge to a deathroll" opens the deathroll with them on the other side - pick the wager and challenge. No typing.
 
 ## 1.8.2
