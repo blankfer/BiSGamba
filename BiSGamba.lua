@@ -423,7 +423,31 @@ end
 ----------------------------------------------------------------------------
 -- group lookups
 ----------------------------------------------------------------------------
-local function MyName() return Bare(UnitName("player")) end
+-- FOREVER NAMES (4 Nov 2026, launch day: Mail challenged Chainheal to a deathroll and nothing arrived; a
+-- table started in the party never opened on the other side). On Forever UnitName is the FIRST name
+-- ("Mail"); whispers, addon-message senders and the guild roster carry the WHOLE name ("Mail Ryangosling"),
+-- and a whisper to the first name alone goes nowhere, with no error (solved.md, 15 + 21 Oct). Gamba held
+-- the two against each other, so its own players looked like strangers and every message from them was
+-- dropped. A unit's name is now GetUnitName(unit, false) - the whole name - and a name from outside (a roll
+-- line, a sender) finds its member by the whole name, or by the first name when only one member has it.
+local function Plain(v)
+  if issecretvalue and issecretvalue(v) then return nil end
+  return (type(v) == "string" and v ~= "") and v or nil
+end
+local function Whole(unit)
+  local n
+  if GetUnitName then
+    local ok, v = pcall(GetUnitName, unit, false)
+    n = ok and Plain(v) or nil
+  end
+  if not n then
+    local ok, v = pcall(UnitName, unit)
+    n = ok and Plain(v) or nil
+  end
+  return n and Bare(n) or nil
+end
+local function FirstWord(n) return n and n:match("^(%S+)") end
+local function MyName() return Whole("player") end
 
 --- Our guild, or nil. Rounds are stamped with the guild they were played in, so
 --- a guildie's bad night in a pug never lands on the guild's board.
@@ -446,12 +470,35 @@ local function GroupUnits()
   return units
 end
 
+--- The unit a name belongs to: the whole name ("Mail Ryangosling"), or a first name alone ("Mail", as
+--- a roll line may say it) when exactly one person here has that first name.
 local function UnitFor(name)
-  if name == MyName() then return "player" end
+  if not name then return nil end
+  local me = MyName()
+  if name == me then return "player" end
+  local byFirst, firsts = nil, {}
+  local single = not name:find(" ", 1, true)
+  if single and FirstWord(me) == name then byFirst, firsts[me] = "player", true end
   for _, u in ipairs(GroupUnits()) do
-    if UnitExists(u) and Bare(UnitName(u)) == name then return u end
+    if UnitExists(u) then
+      local w = Whole(u)
+      if w == name then return u end
+      if single and w and w ~= me and FirstWord(w) == name and not firsts[w] then
+        firsts[w] = true
+        byFirst = byFirst or u
+      end
+    end
   end
-  return nil
+  local n = 0
+  for _ in pairs(firsts) do n = n + 1 end
+  return n == 1 and byFirst or nil
+end
+
+--- A name as Gamba keeps it: the member's whole name when they are here, else the name as given.
+local function Canon(name)
+  if not name then return nil end
+  local u = UnitFor(name)
+  return (u and Whole(u)) or name
 end
 
 local function InGroup(name)
@@ -485,7 +532,7 @@ G.ROLL_PATTERN = ROLL_PATTERN
 local function ParseRoll(msg)
   local who, roll, lo, hi = msg:match(ROLL_PATTERN)
   if not who then return nil end
-  return Bare(who), tonumber(roll), tonumber(lo), tonumber(hi)
+  return Canon(Bare(who)), tonumber(roll), tonumber(lo), tonumber(hi)
 end
 G.ParseRoll = ParseRoll
 
@@ -1428,7 +1475,7 @@ end
 -- chat: 1 joins, -1 leaves (the host reads it; clients hear about it from the host)
 function Game.OnChat(text, sender)
   if not Game.IsHost() then return end
-  local name = Bare(sender)
+  local name = Canon(Bare(sender))
   if not name then return end
   text = (text or ""):gsub("^%s+", ""):gsub("%s+$", "")
   local joining = text == "1" or text == "+1" or text:lower() == "in"
@@ -1725,7 +1772,7 @@ end
 
 -- client side: something the host said
 function Game.OnComm(msg, sender)
-  sender = Bare(sender)
+  sender = Canon(Bare(sender))
   if not sender or sender == MyName() then return end
   -- a deathroll is one-on-one and may be with a guildmate outside the group: Deathroll.lua
   -- does its own check of who may talk to it
@@ -1947,11 +1994,11 @@ Trade = { pending = nil, live = false }
 G.Trade = Trade
 
 local function TradePartner()
-  local name = UnitName("NPC")
+  local name = Whole("NPC")
   if (not name or name == "") and TradeFrameRecipientNameText then name = TradeFrameRecipientNameText:GetText() end
-  if (not name or name == "") and UnitExists("target") and UnitIsPlayer("target") then name = UnitName("target") end
+  if (not name or name == "") and UnitExists("target") and UnitIsPlayer("target") then name = Whole("target") end
   if not name or name == "" then return nil end
-  return Bare(name)
+  return Canon(Bare(name))
 end
 
 function Trade.Pay(to)
@@ -2416,7 +2463,7 @@ end
 -- what Deathroll.lua (loaded after this file) builds with: the same buttons, names and money words
 G.Kit = {
   SmallButton = SmallButton, SetHot = SetHot, SetOff = SetOff, Gold = Gold, MyName = MyName,
-  Bare = Bare, InGroup = InGroup, Now = Now, After = After, Print = Print, Warn = Warn,
+  Bare = Bare, Whole = Whole, Canon = Canon, InGroup = InGroup, Now = Now, After = After, Print = Print, Warn = Warn,
   DB = function() return db end,
   -- the 3D duel (17 Oct 2026): who is who in the group, and the table's own reactions
   UnitFor = UnitFor, GroupUnits = GroupUnits, ANIM = ANIM, WISP = WISP,
@@ -4343,7 +4390,7 @@ local function Slash(msg)
     table.sort(rows)
     Print(#rows == 0 and "no hidden chat this session" or ("hidden chat this session: " .. table.concat(rows, ", ")))
   elseif cmd == "end" or cmd == "settle" or cmd == "stop" then Game.End()
-  elseif cmd == "add" and rest ~= "" then UI:Show(); Game.Add(Bare(rest))
+  elseif cmd == "add" and rest ~= "" then UI:Show(); Game.Add(Canon(Bare(rest)))
   elseif cmd == "pay" then Trade.Pay(rest ~= "" and Bare(rest) or nil)
   elseif cmd == "debts" or cmd == "owe" then
     if #db.debts == 0 then Print("nobody owes anybody") end

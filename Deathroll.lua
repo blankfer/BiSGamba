@@ -74,7 +74,7 @@ function D.Active() return D.game ~= nil and D.game.state ~= "DONE" end
 function D.Challenge(foe, start, wager)
   if foe then
     local trimmed = tostring(foe):gsub("^%s+", ""):gsub("%s+$", "")
-    foe = K.Bare(trimmed)
+    foe = K.Canon(K.Bare(trimmed))
   end
   start, wager = math.floor(tonumber(start) or 0), math.floor(tonumber(wager) or 0)
   if D.Active() then return nil, "a deathroll is already going" end
@@ -303,7 +303,7 @@ function D.People()
   local out, me = {}, K.MyName()
   for _, u in ipairs(K.GroupUnits()) do
     if UnitExists and UnitExists(u) and not (UnitIsUnit and UnitIsUnit(u, "player")) then
-      local n = K.Bare(UnitName(u))
+      local n = K.Whole(u)
       if n and n ~= me then
         local _, class = UnitClass(u)
         local online = not UnitIsConnected or UnitIsConnected(u)
@@ -601,7 +601,7 @@ function D.Show(name)
   local f = D.Build()
   if name and name ~= "" and not D.Active() then D.pick = name f.who:SetText(name) end
   if not D.Active() and not D.pick and UnitIsPlayer and UnitIsPlayer("target") then
-    local t = K.Bare(UnitName("target"))
+    local t = K.Whole("target")
     if t and t ~= K.MyName() and K.InGroup(t) then D.pick = t end
   end
   D.Refresh()
