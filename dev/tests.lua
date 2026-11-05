@@ -2903,5 +2903,55 @@ do
   GetNumGuildMembers, GetGuildRosterInfo, IsInGuild = realNum, realInfo, realIn
 end
 
+-- FOREVER NAMES, THE WAY THE CLIENT GIVES THEM (4 Nov 2026, launch day: Mail's deathroll challenge never
+-- reached Chainheal in the same party, and a table did not open on the other side). The stubs above give a
+-- name with no surname everywhere - kinder than Forever. Here: UnitName = the FIRST name, GetUnitName = the
+-- WHOLE name, an addon message's sender = the whole name, a roll line = whichever (both are tried).
+do
+  local D = G.Deathroll
+  local realUN, realGUN, realSend = _G.UnitName, _G.GetUnitName, C_ChatInfo.SendAddonMessage
+  local SUR = { Kumlust = "Kumlust Ryan", Dps2 = "Dps2 Gosling", Dps1 = "Dps1 Drive", Kumsecration = "Kumsecration Holy" }
+  _G.GetUnitName = function(u) local n = realUN(u) return n and SUR[n] or n end
+  local sent = {}
+  C_ChatInfo.SendAddonMessage = function(prefix, msg, ch, target)
+    addon[#addon + 1] = msg
+    sent[#sent + 1] = { msg = msg, ch = ch, to = target }
+  end
+  D.game = nil
+  check(G.Kit.MyName() == "Kumlust Ryan", "forever: I am my whole name: " .. tostring(G.Kit.MyName()))
+  check(G.Kit.InGroup("Dps2 Gosling"), "forever: a party member is found by the whole name a message carries")
+  check(G.Kit.UnitFor("Dps2") == "raid2", "forever: and by the first name alone, when only one has it")
+  check(G.Kit.Canon("Dps2") == "Dps2 Gosling", "forever: a first name becomes the member's whole name")
+
+  from("Dps2 Gosling", "DRASK", "Dps2 Gosling:dr7", "500", "0")
+  check(D.game and D.game.state == "INVITED" and D.game.foe == "Dps2 Gosling",
+        "forever: a challenge from a party member reaches us (it was dropped as a stranger's)")
+  check(D.frame and D.frame:IsShown(), "forever: and the window asks")
+  D.Answer(true)
+  runTimers(1)
+  local yes = sent[#sent]
+  check(yes and yes.msg:find("^DRYES") and yes.ch == "WHISPER" and yes.to == "Dps2 Gosling",
+        "forever: the answer is whispered to the WHOLE name (a first name goes nowhere): " .. tostring(yes and yes.to))
+  fire("CHAT_MSG_SYSTEM", "Dps2 rolls 300 (1-500)")
+  check(D.game.max == 300 and D.game.turn == "Kumlust Ryan", "forever: their roll line by first name counts")
+  fire("CHAT_MSG_SYSTEM", "Kumlust Ryan rolls 1 (1-300)")
+  check(D.game.state == "DONE" and D.game.loser == "Kumlust Ryan", "forever: ours by whole name counts too")
+  D.game = nil
+
+  addon, sent = {}, {}
+  ok = D.Challenge("Dps2", 100, 0)
+  runTimers(1)
+  check(ok and D.game.foe == "Dps2 Gosling" and sent[1] and sent[1].to == "Dps2 Gosling",
+        "forever: challenging by first name goes to their whole name: " .. tostring(sent[1] and sent[1].to))
+  D.TakeBack()
+
+  addon, sent = {}, {}
+  from("Dps2 Gosling", "PING")
+  runTimers(1)
+  check(sent[#sent] and sent[#sent].msg == "PONG", "forever: a party member's table messages are heard (PING -> PONG)")
+  D.game = nil
+  _G.GetUnitName, C_ChatInfo.SendAddonMessage = realGUN, realSend
+end
+
 print(("%d checks, %d failed"):format(pass + fail, fail))
 os.exit(fail == 0 and 0 or 1)

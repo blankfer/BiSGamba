@@ -1,5 +1,9 @@
 # BiS Gamba - Changelog
 
+## 1.9.1
+
+- **Fixed for Forever's surnames: party members hear each other again.** On Forever a character is "Name Surname", but Gamba compared the first name with the whole one, so a party member's messages were ignored. A deathroll challenge never reached the other player, and a table did not open for the rest of the party. Gamba now goes by the whole name everywhere, and a roll line that shows only a first name still counts for the right player.
+
 ## 1.9.0
 
 - **The Deeprun Tram's timetable, for the whole guild.** With the shared BiS lib's new version, riding the Deeprun Tram with any BiS addon times it for your guild, the way the zeppelins and boats already are - BiS Tools' ride card and BiS Shell's TRAM-TRAK read it.
