@@ -362,8 +362,8 @@ end
 -- saved variables
 ----------------------------------------------------------------------------
 local defaults = {
-  wager = 100, payDiff = true, autoJoin = false, announce = true, grace = 3, dbver = 7, boardScope = "guild",
-  scale = 1, view = "3d", portrait = 0.75, zoom = 0, z = 0, minimapAngle = 200, minimap = true, autoOpen = true, remind = 30, whisper = true, autoCopy = true, lastCall = 10, sound = true, soundChannel = "SFX", voice = "auto", neverOpen = false,
+  wager = 100, payDiff = true, autoJoin = false, announce = true, grace = 3, dbver = 8, boardScope = "guild",
+  scale = 1, view = "3d", portrait = 0.75, zoom = 0, z = 0, minimapAngle = 200, minimap = true, autoOpen = false, remind = 30, whisper = false, autoCopy = true, lastCall = 10, sound = false, soundChannel = "SFX", voice = "auto", neverOpen = false,
   combat = true,       -- hide the window while you are in combat
   users = {},          -- [name] = when we last heard their addon
   tradeDelay = 1.2, npc = {}, wisp = WISP,
@@ -383,6 +383,17 @@ local function InitDB()
   -- read the version BEFORE the defaults fill it in, or every migration is skipped.
   -- No dbver on a non-empty table means it was saved before versions existed.
   local ver = tonumber(db.dbver) or (next(db) and 1 or defaults.dbver)
+  -- FOREVER 1.0 (dbver 8; Arn, 7 Nov: a new user gets "every module turned off ... sounds ... anything that would
+  -- make a new user go like okay, this add-on is just making random noises" - but "everybody that already has the
+  -- addons installed, I don't wanna change default settings that they have on"). The defaults above are a NEW
+  -- install's: the window stays shut when someone else starts a game, no sound, no whisper on a trade. A save made
+  -- before 2.0 had all three ON wherever it never stored them, so that is written in BEFORE the defaults fill the
+  -- gaps - an existing player's game does not change. Once (the stamp is dbver 8); a fresh table skips it.
+  if ver < 8 then
+    for _, k in ipairs({ "autoOpen", "sound", "whisper" }) do
+      if db[k] == nil then db[k] = true end
+    end
+  end
   for k, v in pairs(defaults) do
     if db[k] == nil then db[k] = (type(v) == "table") and {} or v end
   end
@@ -435,6 +446,14 @@ end
 local function Plain(v)
   if issecretvalue and issecretvalue(v) then return nil end
   return (type(v) == "string" and v ~= "") and v or nil
+end
+--- Any answer the client gives, or nil when it is a secret (a yes/no from UnitIsConnected, IsInInstance ...).
+--- Testing a secret in an `if` is refused on Forever, so a client's yes/no goes through here before it is tested.
+local function Known(v)
+  if v == nil or not issecretvalue then return v end
+  local ok, yes = pcall(issecretvalue, v)
+  if not ok or yes then return nil end
+  return v
 end
 local function Whole(unit)
   local n
@@ -2485,6 +2504,7 @@ end
 G.Kit = {
   SmallButton = SmallButton, SetHot = SetHot, SetOff = SetOff, Gold = Gold, MyName = MyName,
   Bare = Bare, Whole = Whole, Canon = Canon, InGroup = InGroup, Now = Now, After = After, Print = Print, Warn = Warn,
+  Plain = Plain, Known = Known,   -- a string / any answer, or nil when the client made it a secret
   DB = function() return db end,
   -- the 3D duel (17 Oct 2026): who is who in the group, and the table's own reactions
   UnitFor = UnitFor, GroupUnits = GroupUnits, ANIM = ANIM, WISP = WISP,
@@ -4348,6 +4368,26 @@ function UI:ToggleConfig()
   if f:IsShown() then f:Toggle(false) else self:PlaceOptions(f); f:Toggle(true) end
 end
 
+--- THE ONE OPTIONS HOME (Forever 1.0; Arn, 7 Nov: "they'll just see BiS> ... click into that add-on"): Gamba's
+--- page under BiS> in the game's own options (Esc > Options > AddOns), holding the options window above. Once, at
+--- login; on a client without the game's panel it does nothing and /bisgamba opt still opens the window.
+function G.SettingsHome()
+  if not T.SettingsPage then return nil end
+  return T.SettingsPage("BiSGamba", {
+    title = "Gamba",
+    about = "High/low gold games for your group: a shared table, the debts it leaves, one-click payouts and the "
+      .. "leaderboard. Deathroll one player from the table or their right-click menu.",
+    status = function()
+      local pop = db and db.autoOpen ~= false and db.neverOpen ~= true
+      local snd = db and db.sound ~= false
+      return ("pop-up %s  -  sounds %s"):format(pop and "on" or "off", snd and "on" or "off")
+    end,
+    window = function() return UI:BuildOptions() end,
+    open = { label = "the table", func = function() UI:Show() end },
+    api = { name = "BiSGambaAPI", about = "the leaderboard, debts, recent rounds and the table, read-only; Open()" },
+  })
+end
+
 
 
 ----------------------------------------------------------------------------
@@ -4381,6 +4421,15 @@ local function dragUpdate()
   Mini:Place()
 end
 
+--- The right-click: the BiS> Gamba page, else the options window.
+function Mini.Options()
+  if T.OpenSettings then
+    local ok, opened = pcall(T.OpenSettings, "BiSGamba")
+    if ok and opened then return end
+  end
+  UI:OpenConfig()
+end
+
 function Mini:Build()
   if self.button or not Minimap then return end
   local b = CreateFrame("Button", "BiSGambaMinimapButton", Minimap)
@@ -4401,8 +4450,12 @@ function Mini:Build()
   b:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
   b:SetScript("OnDragStart", function(self) self:SetScript("OnUpdate", dragUpdate) end)
   b:SetScript("OnDragStop", function(self) self:SetScript("OnUpdate", nil) end)
+  -- ONE STANDARD (Forever 1.0; Arn, 7 Nov: "sometimes left click does one thing, sometimes right click does
+  -- another ... we gotta get everything on the same page"): left = the table, right = options - the BiS> Gamba
+  -- page in the game's options, or the options window where the game has no such panel. (Until 2.0 the right
+  -- click rolled for you; the roll is the table's own button.)
   b:SetScript("OnClick", function(_, button)
-    if button == "RightButton" then UI:Show(); Game.RollMe() else UI:Toggle() end
+    if button == "RightButton" then Mini.Options() else UI:Toggle() end
   end)
   b:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_LEFT")
@@ -4410,7 +4463,9 @@ function Mini:Build()
     local owes, owed = Ledger.Net(MyName())
     if owes > 0 then GameTooltip:AddLine("you owe " .. Gold(owes), T.rgb("warn")) end
     if owed > 0 then GameTooltip:AddLine("you're owed " .. Gold(owed), T.rgb("good")) end
-    GameTooltip:AddLine("Left: table   Right: roll   Drag: move", T.rgb("muted"))
+    GameTooltip:AddLine("left-click  the table", T.rgb("muted"))
+    GameTooltip:AddLine("right-click  options", T.rgb("muted"))
+    GameTooltip:AddLine("drag  move", T.rgb("muted"))
     GameTooltip:Show()
   end)
   b:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -4764,6 +4819,7 @@ ev:SetScript("OnEvent", function(_, event, a1, a2, ...)
   elseif event == "PLAYER_LOGIN" then
     if not db then InitDB() end
     Mini:Build()
+    pcall(G.SettingsHome)            -- BiS> Gamba in the game's options (Settings.lua)
     Comm.Register()
     SharedComm.Boot()                -- the shared BiS channel, alongside our own pipe
     Reg("CHAT_MSG_ADDON")
@@ -4794,8 +4850,14 @@ ev:SetScript("OnEvent", function(_, event, a1, a2, ...)
   elseif event == "GROUP_ROSTER_UPDATE" then
     -- host gone, or sitting there disconnected: their table is dead, let go of it
     if Game.Remote() then
+      -- "connected?" can be a secret on Forever: only a plain false says they dropped (a secret keeps the table)
       local u = UnitFor(Game.host)
-      local gone = not u or (UnitIsConnected and not UnitIsConnected(u))
+      local on
+      if u and UnitIsConnected then
+        local okC, v = pcall(UnitIsConnected, u)
+        if okC then on = Known(v) end
+      end
+      local gone = not u or on == false
       if gone then Print(Game.host .. " left - table closed"); Game.Reset() end
     end
     if UI.frame and UI.frame:IsShown() then UI:Refresh() end
