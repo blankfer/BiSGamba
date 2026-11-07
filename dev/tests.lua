@@ -3267,7 +3267,7 @@ end
 
 ---------------------------------------------------------------- Forever 1.0: the minimap's two clicks
 -- ONE STANDARD (Arn, 7 Nov: "sometimes left click does one thing, sometimes right click does another"): left = the
--- table, right = options (the BiS> Gamba page, or the options window without the game's panel). The roll stays
+-- table, right = the options window, open or shut (8 Nov: not the game's options any more). The roll stays
 -- a button in the table - a click on the minimap never rolls.
 do
   local b = G.Minimap.button
@@ -3277,18 +3277,24 @@ do
   check(G.UI.frame:IsShown(), "minimap left-click: the table opens")
   b.scripts.OnClick(b, "LeftButton")
   check(not G.UI.frame:IsShown(), "minimap left-click again: the table closes")
+  -- right = Gamba's OWN options window, a toggle (Arn, 8 Nov: "when i right click the minimap again it should close
+  -- that option window ... we keep them opening how they used to") - never the game's options
   local rolls, opens = #rolled, #SET.opened
-  b.scripts.OnClick(b, "RightButton")
-  check(#rolled == rolls, "minimap right-click: no /roll")
-  check(#SET.opened == opens + 1 and SET.opened[#SET.opened] == "BiS> Gamba",
-        "minimap right-click: the game's options open on BiS> Gamba: " .. tostring(SET.opened[#SET.opened]))
-  -- without the game's panel (an older client): the options window
-  _G.Settings = nil
   local opt = G.UI:BuildOptions()
   opt:Hide()
   b.scripts.OnClick(b, "RightButton")
+  check(#rolled == rolls, "minimap right-click: no /roll")
+  check(opt:IsShown(), "minimap right-click: Gamba's own options window opens")
+  check(#SET.opened == opens, "minimap right-click: the game's options are NOT opened (OpenToCategory not called)")
+  b.scripts.OnClick(b, "RightButton")
+  check(not opt:IsShown() and #SET.opened == opens and #rolled == rolls,
+        "minimap right-click again: the options window closes")
+  -- the same without the game's panel (an older client)
+  _G.Settings = nil
+  b.scripts.OnClick(b, "RightButton")
   check(opt:IsShown() and #rolled == rolls, "minimap right-click without the game's panel: the options window")
-  opt:Hide()
+  b.scripts.OnClick(b, "RightButton")
+  check(not opt:IsShown(), "and again: it closes")
   _G.Settings = SET.api
   -- the tooltip says exactly that, one click a line
   local lines = {}
@@ -3315,10 +3321,32 @@ do
   G.db.autoOpen, G.db.sound = true, true
   check(spec.status() == "pop-up on  -  sounds on", "status, both on: " .. tostring(spec.status()))
   G.db.autoOpen, G.db.sound = keepA, keepS
+  -- Settings minor 2 (Arn, 7 Nov: "we esentially just took the old option window kept it the same size and nestels
+  -- it inside a bigger window"): the page never re-parents or shrinks the window; a button on it shows the window
+  local win = G.UI:BuildOptions()
+  win:Hide()
+  local parent0, scale0 = win:GetParent(), win:GetScale()
   page.frame:Show()
-  check(BiSGambaOptions.parent == page.frame.body and BiSGambaOptions:IsShown(), "the page holds the options window")
+  check(win:GetParent() == parent0 and win:GetParent() ~= page.frame.body, "showing the page leaves the options window's parent alone")
+  check(win:GetScale() == scale0, "showing the page leaves the options window's scale alone: " .. tostring(win:GetScale()))
+  check(not win:IsShown(), "showing the page does not show the options window")
+  local ob = page.frame.optBtn
+  check(ob ~= nil and ob:IsShown(), "the page has its 'the options window' button, shown")
+  -- in the client the player is standing in the game's options panel when he clicks it: it is SHOWN, and
+  -- HideUIPanel is how the client puts it away
+  local sp = newFrame("Frame", "SettingsPanel", UIParent)
+  sp:Show()
+  local keepHUP = rawget(_G, "HideUIPanel")
+  _G.HideUIPanel = function(fr) fr:Hide() end
+  local opens = #SET.opened
+  ob.scripts.OnClick(ob, "LeftButton")
+  check(win:IsShown() and win:GetParent() == parent0, "the page's button shows the options window, as it always was")
+  check(not sp:IsShown(), "the page's button puts the game's options panel away first")
+  check(#SET.opened == opens, "the page's button opens no game panel")
+  _G.SettingsPanel, _G.HideUIPanel = nil, keepHUP
+  win:Hide()
   page.frame:Hide()
-  check(BiSGambaOptions.parent ~= page.frame.body and not BiSGambaOptions:IsShown(), "leaving the page gives it back, hidden")
+  check(win:GetParent() == parent0 and not win:IsShown(), "leaving the page: the window untouched, hidden")
   G.UI.frame:Hide()
   spec.open.func()
   check(G.UI.frame:IsShown(), "the page's button opens the table")

@@ -2,8 +2,9 @@
 
 ## 2.0.0 - Forever 1.0
 
+- Minimap right-click opens the options window again (click again to close); the BiS> page no longer squeezes that window inside it.
 - **The minimap button's right-click opens the options now** (it used to roll for you). Left-click is still the table, and the roll is the table's own **roll** button. The tooltip says it: left-click the table, right-click options, drag to move.
-- **Gamba's settings are in the game's own options too.** Esc > Options > AddOns > **BiS>** > BiS> Gamba: the same options window, a button to open the table, and on the BiS> front page a line saying whether the pop-up and the sounds are on.
+- **Gamba's settings are in the game's own options too.** Esc > Options > AddOns > **BiS>** > BiS> Gamba: a button to the options window, a button to open the table, and on the BiS> front page a line saying whether the pop-up and the sounds are on.
 - **A new install starts quiet.** The table, hosting a game and the results in group chat work from the first minute. The window popping up when someone else deals, the sound cues and the "you owe me" whispers on a trade start off - switch each on in the options (**open on a new game**, **sound cues**, **whisper the balance**). **If you already had Gamba, nothing changes for you:** everything stays as you had it.
 - **A deathroll challenge no longer pops up when you said not to.** With **never open anything** on, or the pop-up off, a challenge waits with one chat line saying who it is from - `/bisgamba dr` opens it to accept or decline. With sounds off it makes no sound.
 - **No "Challenge to a deathroll" line in right-click menus inside dungeons, raids and battlegrounds, or on the Friends list.** A line there could break the game's own menu (no Report Player, no Copy Name). Challenge from the table's **deathroll** button or `/bisgamba dr <name>` there.

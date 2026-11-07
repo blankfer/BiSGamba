@@ -4369,8 +4369,9 @@ function UI:ToggleConfig()
 end
 
 --- THE ONE OPTIONS HOME (Forever 1.0; Arn, 7 Nov: "they'll just see BiS> ... click into that add-on"): Gamba's
---- page under BiS> in the game's own options (Esc > Options > AddOns), holding the options window above. Once, at
---- login; on a client without the game's panel it does nothing and /bisgamba opt still opens the window.
+--- page under BiS> in the game's own options (Esc > Options > AddOns): status, plus a button that shows the options
+--- window above as it always was (BiSTheme Settings minor 2 never squeezes it inside the page). Once, at login; on
+--- a client without the game's panel it does nothing and /bisgamba opt still opens the window.
 function G.SettingsHome()
   if not T.SettingsPage then return nil end
   return T.SettingsPage("BiSGamba", {
@@ -4421,13 +4422,11 @@ local function dragUpdate()
   Mini:Place()
 end
 
---- The right-click: the BiS> Gamba page, else the options window.
+--- The right-click: Gamba's own options window as a toggle (Arn, 7 Nov: "when i right click the minimap again it
+--- should close that option window ... we keep them opening how they used to"). Never the game's options; the
+--- BiS> Gamba page is still there in Esc > Options > AddOns, with a button that opens this same window.
 function Mini.Options()
-  if T.OpenSettings then
-    local ok, opened = pcall(T.OpenSettings, "BiSGamba")
-    if ok and opened then return end
-  end
-  UI:OpenConfig()
+  UI:ToggleConfig()
 end
 
 function Mini:Build()
@@ -4451,9 +4450,9 @@ function Mini:Build()
   b:SetScript("OnDragStart", function(self) self:SetScript("OnUpdate", dragUpdate) end)
   b:SetScript("OnDragStop", function(self) self:SetScript("OnUpdate", nil) end)
   -- ONE STANDARD (Forever 1.0; Arn, 7 Nov: "sometimes left click does one thing, sometimes right click does
-  -- another ... we gotta get everything on the same page"): left = the table, right = options - the BiS> Gamba
-  -- page in the game's options, or the options window where the game has no such panel. (Until 2.0 the right
-  -- click rolled for you; the roll is the table's own button.)
+  -- another ... we gotta get everything on the same page"): left = the table, right = the options window, open or
+  -- shut (8 Nov: no longer the game's options). (Until 2.0 the right click rolled for you; the roll is the
+  -- table's own button.)
   b:SetScript("OnClick", function(_, button)
     if button == "RightButton" then Mini.Options() else UI:Toggle() end
   end)
