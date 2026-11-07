@@ -5,6 +5,11 @@ Paste everything below the line into the project description, in the Markdown ed
 file and the live page together (Arn's rule); fixes stay in the changelog. House voice:
 `_bisdev/docs/voice.md`.
 
+Changed since the previous text (8 Nov, 2.0.0 - Forever 1.0): the minimap button spelled out (left = the
+table, right = the options window, right-click again closes it); the BiS> Gamba page in the game's options
+described as the full-page dashboard it is now; the quiet-new-install line now says existing players keep
+their settings.
+
 ---
 
 # BiS Gamba
@@ -39,9 +44,13 @@ Biggest winners and losers, all-time, with win and loss records. Deathrolls coun
 
 ## Sound and settings
 
-Short sounds for last call, your turn to roll, wins and losses. With [FojjiCore](https://www.curseforge.com/wow/addons/fojjicore) installed, one of its voice packs speaks them instead. Never the raid-warning sound. Settings live behind the **options** button, a right-click on the minimap button, `/bisgamba config`, or the game's own options: Esc > Options > AddOns > **BiS>** > BiS> Gamba.
+Short sounds for last call, your turn to roll, wins and losses. With [FojjiCore](https://www.curseforge.com/wow/addons/fojjicore) installed, one of its voice packs speaks them instead. Never the raid-warning sound.
 
-A new install starts quiet: the table and hosting are on, and the sounds, the window popping up when someone else deals, and the trade whispers wait until you switch them on.
+The minimap button: left-click opens the table, right-click opens the options window (right-click again closes it), drag to move it. The options window is also behind the table's **options** button and `/bisgamba config`.
+
+Every setting is in the game's own options too: Esc > Options > AddOns > **BiS>** > BiS> Gamba is a full-page dashboard, with the sections down the left (table, timing, ledger, deathroll, team game, sound, display, gamba) and each one's settings big and readable on the right.
+
+A new install starts quiet: the table, hosting a game and the results in group chat work from the first minute, and the sounds, the window popping up when someone else deals, and the "you owe me" whispers on a trade wait until you switch them on. If you already had BiS Gamba, nothing changes for you: your settings stay as you had them.
 
 ## Works with
 
