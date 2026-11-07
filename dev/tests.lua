@@ -19,7 +19,7 @@ Frame.__index = function(t, k)
 end
 local MODELS = {}                 -- every 3D model made, for a window's scale change to reach
 local function newFrame(kind, name, parent)
-  local f = setmetatable({ kind = kind, name = name, parent = parent, scripts = {}, shown = true, w = 100, h = 100 }, Frame)
+  local f = setmetatable({ kind = kind, name = name, parent = parent, scripts = {}, shown = true, w = 0, h = 0 }, Frame)
   if name then _G[name] = f end
   if kind == "DressUpModel" or kind == "PlayerModel" then MODELS[#MODELS + 1] = f end
   return f
@@ -93,7 +93,16 @@ function Frame:GetHeight() return self.h end
 -- mouse" untestable - every hover test passed on a button that did nothing
 function Frame:SetTextColor(r, g, b) self.textColor = { r, g, b } end
 function Frame:SetBackdropBorderColor(r, g, b, a) self.borderColor = { r, g, b, a } end
+-- SetAllPoints is two anchors in the client, so ClearAllPoints takes it away too (8 Nov, the BiS> dashboard kit:
+-- its lamps and bars are anchored, never SetAllPoints + SetPoint - a mock that kept `all` forever could not see that)
 function Frame:SetAllPoints(rel) self.all = rel or true end
+-- the BiS> dashboard kit's calls, kept the way the client keeps them (an unsized frame answers 0 wide, 0 tall -
+-- newFrame above, 8 Nov: it was a made-up 100 - and GetStringHeight is left to the catch-all nil: before layout
+-- the client cannot say)
+function Frame:EnableMouse(v) self.mouse = v and true or false end
+function Frame:RegisterForClicks(...) self.clicks = { ... } end
+function Frame:SetWordWrap(v) self.wrap = v and true or false end
+function Frame:SetJustifyV(v) self.justV = v end
 -- record anchoring so a window left unanchored (opens off-screen) is a red test.
 -- The whole anchor is kept, in the client's forms: SetPoint(p) and SetPoint(p, x, y) are
 -- relative to the parent, relPoint = point; rel nil = parent; a name string = that frame.
@@ -103,7 +112,8 @@ function Frame:SetPoint(point, rel, rp, x, y)
   self.points = self.points or {}
   self.points[#self.points + 1] = { point = point, rel = rel, relPoint = rp or point, x = x or 0, y = y or 0 }
 end
-function Frame:ClearAllPoints() self.points = {} end
+function Frame:ClearAllPoints() self.points = {}; self.all = nil end
+function Frame:GetNumPoints() return #(self.points or {}) end
 function Frame:SetEnabled(v) self.enabled = v and true or false end
 function Frame:SetChecked(v) self.checked = v and true or false end
 function Frame:GetChecked() return self.checked end
@@ -299,6 +309,35 @@ function GetSummonConfirmSummoner() return "" end
 function hooksecurefunc() end
 function pcall_(f, ...) return pcall(f, ...) end
 
+-- BLIZZARD'S SETTINGS PANEL, as Forever has it (BiSTheme/dev/tests.lua section 10): a subcategory needs a
+-- REGISTERED parent, an unknown id opens nothing, a category answers GetID. Present from the start, so the
+-- page Gamba registers at login is registered here the way it is in game.
+local SET = { reg = {}, opened = {}, addons = {}, nextId = 0 }
+do
+  local function Category(name)
+    SET.nextId = SET.nextId + 1
+    local c = { name = name, id = SET.nextId }
+    function c:GetID() return self.id end
+    SET.reg[c.id] = c
+    return c
+  end
+  SET.api = {
+    RegisterCanvasLayoutCategory = function(frame, name) local c = Category(name) c.frame = frame return c, {} end,
+    RegisterAddOnCategory = function(c) c.addon = true SET.addons[#SET.addons + 1] = c end,
+    RegisterCanvasLayoutSubcategory = function(parent, frame, name)
+      if not (parent and parent.addon) then error("parent category is not registered") end
+      local c = Category(name) c.frame, c.parentCat = frame, parent
+      return c, {}
+    end,
+    OpenToCategory = function(id)
+      if not SET.reg[id] then return false end
+      SET.opened[#SET.opened + 1] = SET.reg[id].name
+      return true
+    end,
+  }
+  _G.Settings = SET.api
+end
+
 ---------------------------------------------------------------- does every label FIT its window
 -- (6 Oct 2026, ported from BiSTools) Arn: "make a check for cut offs or overflows that happens
 -- often". Every shown label inside a window is measured where it actually lands - following what it
@@ -458,14 +497,20 @@ check(BiSGambaDB.base.Oldtimer and BiSGambaDB.base.Oldtimer.net == 250,
   "and are carried over as the base the rounds build on")
 check(BiSGambaDB.view == "3d", "the dead table view is migrated away - to 3D, the default since dbver 7")
 check(BiSGambaDB.autoJoin == false, "autojoin migrated off")
-check(BiSGambaDB.dbver == 7, "stamped with the current version")
+check(BiSGambaDB.dbver == 8, "stamped with the current version")
 check(BiSGambaDB.soundChannel == "SFX", "the cues moved off the master channel")
+-- FOREVER 1.0 (dbver 8): an EXISTING save keeps what it had - these three were on for it (never stored), and stay on
+check(BiSGambaDB.autoOpen == true and BiSGambaDB.sound == true and BiSGambaDB.whisper == true,
+  "an existing save keeps the pop-up, the sounds and the whispers on (frozen, not the new quiet defaults)")
 BiSGambaDB.stats = {}
 -- nothing the addon defines should leak into _G
 for _, name in ipairs({ "Stat", "PutMoney", "TradeMoneyNow", "nudged", "seated", "Trade", "Game", "UI" }) do
   check(_G[name] == nil, "no global named " .. name)
 end
 check(BiSGambaDB and BiSGambaDB.wager == 100 and BiSGambaDB.view == "3d", "defaults (3d view, since dbver 7)")
+-- the BiS> page is registered at login (the suite stands in Blizzard's Settings from the start, as Forever has it)
+check(BiSTheme.settingsPages.BiSGamba and BiSTheme.settingsPages.BiSGamba.category ~= nil,
+  "cold start: the BiS> Gamba page is registered at PLAYER_LOGIN, with no click")
 check(ev.events.CHAT_MSG_SYSTEM and ev.events.TRADE_SHOW and ev.events.CHAT_MSG_RAID, "events registered")
 
 -- roll pattern
@@ -995,6 +1040,22 @@ group.raid2.offline = true
 fire("GROUP_ROSTER_UPDATE")
 check(G.Game.state == "IDLE" and G.Game.host == nil, "a disconnected host's table is let go")
 group.raid2.offline = nil
+-- "CONNECTED?" CAN BE A SECRET (Forever 1.0 sweep, 7 Nov): testing one in an if is refused by the client, so the
+-- answer is asked about first, and a secret one closes nothing (we do not know they left)
+do
+  SlashCmdList.BISGAMBA("reset")
+  from("Dps2", "OPEN", "100")
+  local realIs, realConn = _G.issecretvalue, _G.UnitIsConnected
+  local secretMeta, asked = {}, false
+  local s = setmetatable({}, secretMeta)
+  _G.issecretvalue = function(v) if v == s then asked = true end return getmetatable(v) == secretMeta end
+  _G.UnitIsConnected = function() return s end
+  local okR = pcall(fire, "GROUP_ROSTER_UPDATE")
+  check(okR and asked, "a host's \"connected?\" is asked about (issecretvalue) before it is tested")
+  check(G.Game.Remote() and G.Game.host == "Dps2", "a secret \"connected?\": the table is kept")
+  _G.issecretvalue, _G.UnitIsConnected = realIs, realConn
+  SlashCmdList.BISGAMBA("reset")
+end
 -- and we can host after
 SlashCmdList.BISGAMBA("start 100")
 check(G.Game.IsHost(), "and we can open our own")
@@ -2043,6 +2104,7 @@ do
     { "Libs/RezComm-1.0/RezComm-1.0.lua",       "../_bisdev/RezComm-1.0/RezComm-1.0.lua" },
     { "Libs/BiSTheme/Console.lua",              "../BiSTheme/Console.lua" },
     { "Libs/BiSTheme/Options.lua",              "../BiSTheme/Options.lua" },
+    { "Libs/BiSTheme/Settings.lua",             "../BiSTheme/Settings.lua" },
   }
   for _, pr in ipairs(pairs_) do
     local mine, ref = bytes(pr[1]), bytes(pr[2])
@@ -2820,6 +2882,32 @@ do
   check(not fun and not BiSGambaDB.rounds["Dps2:dr1"], "for fun: no debt, nothing on the board")
   D.game = nil
 
+  -- A CHALLENGE NEVER OPENS WHAT THE PLAYER SHUT (Forever 1.0 sweep, 7 Nov: the incoming challenge played the
+  -- "open" cue and opened the window ignoring "never open anything", the pop-up switch and the sound switch)
+  do
+    local keepNever, keepAuto, keepSound = G.db.neverOpen, G.db.autoOpen, G.db.sound
+    for i, case in ipairs({ { never = true, auto = true, what = "never open anything" },
+                            { never = false, auto = false, what = "the pop-up off" } }) do
+      D.frame:Hide(); D.game = nil
+      G.db.neverOpen, G.db.autoOpen, G.db.sound = case.never, case.auto, false
+      played, chat = {}, {}
+      _G.__now = 5000 + i
+      from("Dps2", "DRASK", "Dps2:drq" .. i, "300", "5")
+      check(D.game and D.game.state == "INVITED", "quiet challenge (" .. case.what .. "): still received")
+      check(not D.frame:IsShown(), "quiet challenge (" .. case.what .. "): the window stays shut")
+      check(#played == 0, "quiet challenge (" .. case.what .. "), sounds off: no cue")
+      check(table.concat(chat, "\n"):find("Dps2 challenges you", 1, true)
+            and table.concat(chat, "\n"):find("/bisgamba dr", 1, true),
+            "quiet challenge (" .. case.what .. "): one chat line says who and how to answer: " .. table.concat(chat, " / "))
+    end
+    SlashCmdList.BISGAMBA("dr")
+    check(D.frame:IsShown() and D.game.state == "INVITED", "and /bisgamba dr opens it, the challenge waiting")
+    D.Answer(false)
+    D.frame:Hide(); D.game = nil
+    G.db.neverOpen, G.db.autoOpen, G.db.sound = keepNever, keepAuto, keepSound
+    _G.__now = nil
+  end
+
   -- unanswered
   ok = D.Challenge("Frank G", 1000, 5)
   runTimers(D.ANSWER + 1)
@@ -2916,6 +3004,39 @@ do
   check(#made == 1, "a stranger: no line")
   hooks.MENU_UNIT_PLAYER(nil, root, { unit = "player" })
   check(#made == 1, "your own menu: no line")
+  -- THE TWO GUARDS BiS TOOLS NEEDED (Forever 1.0 sweep, 7 Nov). Inside an instance the menu's own frame rects are
+  -- secret, and a line from an addon leaves Blizzard's layout tainted (Report Player, Copy Name refused - BiS Tools
+  -- in a battleground, 13 Oct): no line there, and "inside?" must read a PLAIN false. And never the Friends list (a
+  -- line there tainted its refresh - BiS Tools, 20 Oct).
+  check(hooks.MENU_UNIT_FRIEND == nil, "never hooked on the Friends list")
+  local realInst, realIs = _G.IsInInstance, _G.issecretvalue
+  local secretMeta = {}
+  local function secret() return setmetatable({}, secretMeta) end
+  _G.issecretvalue = function(v) return getmetatable(v) == secretMeta end
+  _G.IsInInstance = function() return true, "party" end
+  hooks.MENU_UNIT_PARTY(nil, root, { unit = "party1" })
+  check(#made == 1, "inside an instance: no line")
+  _G.IsInInstance = function() return secret(), "party" end
+  local okS = pcall(hooks.MENU_UNIT_PARTY, nil, root, { unit = "party1" })
+  check(okS and #made == 1, "inside? a secret answer: no line (and no error)")
+  _G.IsInInstance = realInst
+  -- the menu's answers about the unit can be secret too: never decided on
+  local realUIP = _G.UnitIsPlayer
+  _G.UnitIsPlayer = function() return secret() end
+  okS = pcall(hooks.MENU_UNIT_PARTY, nil, root, { unit = "party1" })
+  check(okS and #made == 1, "a secret \"is a player?\": no line")
+  _G.UnitIsPlayer = realUIP
+  _G.UnitIsUnit = function() return secret() end
+  okS = pcall(hooks.MENU_UNIT_PARTY, nil, root, { unit = "party1" })
+  check(okS and #made == 1, "a secret \"is it me?\": no line")
+  _G.UnitIsUnit = function(a, b) return a == b end
+  _G.GetUnitName = function() return secret() end
+  okS = pcall(hooks.MENU_UNIT_PARTY, nil, root, { unit = "party1" })
+  check(okS and #made == 1, "a secret name: no line")
+  _G.GetUnitName = function(u) return ({ party1 = "Frank G", party2 = "Dps2", target = "Stranger" })[u] end
+  _G.issecretvalue = realIs
+  hooks.MENU_UNIT_PARTY(nil, root, { unit = "party1" })
+  check(#made == 2, "and outside, all plain: the line is back")
   lib.peers = keepPeers
   _G.Menu, _G.GetUnitName, _G.UnitIsUnit, _G.UnitExists = realMenu, realGUN, realIsUnit, realExists
   GetNumGuildMembers, GetGuildRosterInfo, IsInGuild = realNum, realInfo, realIn
@@ -3151,6 +3272,243 @@ do
                                        "short: RNDS (any case) = rounds")
   chat = {}
   SlashCmdList.BISGAMBA("hid"); check(table.concat(chat):find("hidden chat", 1, true), "short: hid = hidden")
+end
+
+---------------------------------------------------------------- Forever 1.0: the minimap's two clicks
+-- ONE STANDARD (Arn, 7 Nov: "sometimes left click does one thing, sometimes right click does another"): left = the
+-- table, right = the options window, open or shut (8 Nov: not the game's options any more). The roll stays
+-- a button in the table - a click on the minimap never rolls.
+do
+  local b = G.Minimap.button
+  check(b ~= nil, "minimap: the button is built at login")
+  G.UI.frame:Hide()
+  b.scripts.OnClick(b, "LeftButton")
+  check(G.UI.frame:IsShown(), "minimap left-click: the table opens")
+  b.scripts.OnClick(b, "LeftButton")
+  check(not G.UI.frame:IsShown(), "minimap left-click again: the table closes")
+  -- right = Gamba's OWN options window, a toggle (Arn, 8 Nov: "when i right click the minimap again it should close
+  -- that option window ... we keep them opening how they used to") - never the game's options
+  local rolls, opens = #rolled, #SET.opened
+  local opt = G.UI:BuildOptions()
+  opt:Hide()
+  b.scripts.OnClick(b, "RightButton")
+  check(#rolled == rolls, "minimap right-click: no /roll")
+  check(opt:IsShown(), "minimap right-click: Gamba's own options window opens")
+  check(#SET.opened == opens, "minimap right-click: the game's options are NOT opened (OpenToCategory not called)")
+  b.scripts.OnClick(b, "RightButton")
+  check(not opt:IsShown() and #SET.opened == opens and #rolled == rolls,
+        "minimap right-click again: the options window closes")
+  -- the same without the game's panel (an older client)
+  _G.Settings = nil
+  b.scripts.OnClick(b, "RightButton")
+  check(opt:IsShown() and #rolled == rolls, "minimap right-click without the game's panel: the options window")
+  b.scripts.OnClick(b, "RightButton")
+  check(not opt:IsShown(), "and again: it closes")
+  _G.Settings = SET.api
+  -- the tooltip says exactly that, one click a line
+  local lines = {}
+  GameTooltip.AddLine = function(_, t) lines[#lines + 1] = strip(t) end
+  b.scripts.OnEnter(b)
+  GameTooltip.AddLine = nil
+  local all = table.concat(lines, "\n")
+  check(all:find("left-click  the table", 1, true) and all:find("right-click  options", 1, true)
+        and all:find("drag  move", 1, true) and not all:lower():find("roll", 1, true),
+        "minimap tooltip: left-click the table / right-click options / drag move: " .. all:gsub("\n", " | "))
+end
+
+---------------------------------------------------------------- Forever 1.0: the BiS> page
+do
+  local page = BiSTheme.settingsPages.BiSGamba
+  check(page and page.category and page.category.name == "BiS> Gamba" and page.category.parentCat
+        and page.category.parentCat.name == "BiS>", "BiS> Gamba sits under the one BiS> entry")
+  local spec = page and page.spec or {}
+  check(spec.api and spec.api.name == "BiSGambaAPI" and _G.BiSGambaAPI ~= nil, "the page names BiSGambaAPI, which exists")
+  check(spec.open and spec.open.label == "the table" and type(spec.open.func) == "function", "the page's big button: the table")
+  local keepA, keepS = G.db.autoOpen, G.db.sound
+  G.db.autoOpen, G.db.sound = false, false
+  check(spec.status and spec.status() == "pop-up off  -  sounds off", "status: " .. tostring(spec.status and spec.status()))
+  G.db.autoOpen, G.db.sound = true, true
+  check(spec.status() == "pop-up on  -  sounds on", "status, both on: " .. tostring(spec.status()))
+  G.db.autoOpen, G.db.sound = keepA, keepS
+  -- BiSTheme Settings minor 3 (Arn, 8 Nov, of BiS> Tools: "it looks way way better do it for the other ones"): the
+  -- page is the kit's DASHBOARD - Gamba's sections down the left, the picked one's settings big on the right. The
+  -- options window is never taken in (minor 2, Arn 7 Nov: "dont just shrink remake them all"): its rows' own tables
+  -- are handed over, and the window stays exactly as it always was.
+  check(type(spec.build) == "function" and type(spec.refresh) == "function", "the page is a dashboard: build + refresh")
+  check(spec.window == nil, "no stand-in 'options window' button on a dashboard page")
+  local win = G.UI:BuildOptions()
+  win:Hide()
+  local parent0, scale0 = win:GetParent(), win:GetScale()
+  page.frame:Show()
+  check(win:GetParent() == parent0 and win:GetParent() ~= page.frame.body, "showing the page leaves the options window's parent alone")
+  check(win:GetScale() == scale0, "showing the page leaves the options window's scale alone: " .. tostring(win:GetScale()))
+  check(not win:IsShown(), "showing the page does not show the options window")
+  check(page.frame.optBtn == nil, "and draws no stand-in button")
+  local dash = page.frame.body and page.frame.body.dash
+  check(dash ~= nil, "showing the page builds the dashboard (body.dash)")
+  if dash then
+    local want = { "table", "timing", "ledger", "deathroll", "team game", "sound", "display", "gamba" }
+    local got = {}
+    for i, r in ipairs(dash.rows) do got[i] = r.entry.title end
+    check(table.concat(got, ",") == table.concat(want, ","), "one list row per section, in order: " .. table.concat(got, ","))
+    check(dash.list.head:GetText() == "SECTIONS", "the list's title: " .. tostring(dash.list.head:GetText()))
+    local function rowOf(key) for _, r in ipairs(dash.rows) do if r.entry.key == key then return r end end end
+    -- NO SECOND COPY: every setting on the dashboard is the options window's own row table, and every row of the
+    -- window is somewhere on the dashboard
+    local winRow, onDash = {}, {}
+    for _, r in ipairs(win.rows or {}) do if r.opt then winRow[r.opt] = r end end
+    local same, n = true, 0
+    for _, e in ipairs(dash.entries) do
+      for _, o in ipairs(e.options or {}) do n = n + 1; onDash[o] = true; if not winRow[o] then same = false end end
+    end
+    check(n > 0 and same, "every dashboard setting is the options window's own row table (" .. n .. ")")
+    local missing = {}
+    -- (the window's addon-made rows; the suite's own over-long test row above is not one of them)
+    for _, sec in ipairs(G.UI.sections or {}) do
+      for _, o in ipairs(sec.rows) do
+        if not onDash[o] then missing[#missing + 1] = tostring(o.label) end
+        if not winRow[o] then missing[#missing + 1] = tostring(o.label) .. " (not in the window)" end
+      end
+    end
+    check(G.UI.sections and #missing == 0, "every row of the options window is on the dashboard; missing: " .. table.concat(missing, ", "))
+    -- the table section is picked first, its settings shown
+    check(dash.selected == "table" and dash.pages.table and #dash.pages.table == 4 and dash.pages.table[1]:IsShown(),
+          "the table section picked first, its four settings shown")
+    check(dash.detail.open:IsShown() and dash.detail.open.label:GetText() == "open the table",
+          "the table section's button opens the table: " .. tostring(dash.detail.open.label:GetText()))
+    -- picking sound shows its rows (the table's go)
+    local sr = rowOf("sound")
+    sr.scripts.OnClick(sr, "LeftButton")
+    check(dash.selected == "sound" and dash.pages.sound and dash.pages.sound[1]:IsShown() and not dash.pages.table[1]:IsShown(),
+          "picking sound shows its settings, the table's go")
+    check(dash.detail.name:GetText() == "sound" and dash.detail.switch:IsShown()
+          and tostring(dash.detail.usage:GetText()):find("/bisgamba sound", 1, true) ~= nil,
+          "sound: its name, its own switch, its command at the foot: " .. tostring(dash.detail.usage:GetText()))
+    -- flipping a setting in the dashboard changes the SAME saved value the options window shows
+    local cues = dash.pages.sound[1]
+    local wcues
+    for o, r in pairs(winRow) do if o.label == "sound cues" then wcues = r end end
+    check(cues.opt.label == "sound cues" and wcues ~= nil, "the sound cues row, on both")
+    G.db.sound = false
+    win:Paint()
+    cues.sw.scripts.OnClick(cues.sw)
+    check(G.db.sound == true, "flipping sound cues in the dashboard: the saved value is on")
+    win:Paint()
+    check(wcues.ctl.on == true, "and the options window's own row agrees after its Paint")
+    win:Show()
+    cues.sw.scripts.OnClick(cues.sw)
+    check(G.db.sound == false and wcues.ctl.on == false, "the window open: the dashboard repaints it as it goes")
+    win:Hide()
+    -- a stepper on the dashboard: the same value the window shows
+    local tr = rowOf("timing")
+    tr.scripts.OnClick(tr, "LeftButton")
+    local lc = dash.pages.timing[1]
+    G.db.lastCall = 10
+    lc.plus.scripts.OnClick(lc.plus)
+    check(G.db.lastCall == 11 and lc.val:GetText() == "11s", "the last call stepper: 10 -> 11, saved, shown: " .. tostring(lc.val:GetText()))
+    G.db.lastCall = 30
+    lc.plus.scripts.OnClick(lc.plus)
+    check(G.db.lastCall == 30, "the stepper clamps at the window's own max")
+    G.db.lastCall = 10
+    -- THE SECTION SWITCH goes through the same setter as its slash command (Own.sound)
+    sr.scripts.OnClick(sr, "LeftButton")
+    local realSound, calls = G.Own.sound, 0
+    G.Own.sound = function(on) calls = calls + 1; return realSound(on) end
+    G.db.sound = true
+    SlashCmdList.BISGAMBA("sound")
+    check(calls == 1 and G.db.sound == false, "/bisgamba sound goes through Own.sound: " .. calls)
+    dash.detail.switch.scripts.OnClick(dash.detail.switch)
+    check(calls == 2 and G.db.sound == true and sr.state:GetText() == "ON", "the big switch: the same Own.sound, the list row says ON")
+    sr.scripts.OnClick(sr, "RightButton")
+    check(calls == 3 and G.db.sound == false and sr.state:GetText() == "off", "right-click in the list: the same setter again")
+    check(cues.label:GetAlpha() < 1, "sounds off: their settings grey")
+    G.Own.sound = realSound
+    -- refresh: a value changed elsewhere shows the next time the page opens
+    page.frame:Hide()
+    G.db.sound = true
+    page.frame:Show()
+    check(sr.state:GetText() == "ON", "the page paints again each time it is shown")
+    -- deathroll: no settings, a window of its own, its command
+    local dr = rowOf("deathroll")
+    dr.scripts.OnClick(dr, "LeftButton")
+    check(dash.detail.none:IsShown() and dash.detail.open:IsShown() and not dash.detail.switch:IsShown()
+          and tostring(dash.detail.usage:GetText()):find("/bisgamba dr", 1, true) ~= nil,
+          "deathroll: nothing to set, its window button, its command")
+    dash.detail.open.scripts.OnClick(dash.detail.open)
+    check(G.Deathroll.frame ~= nil and G.Deathroll.frame:IsShown(), "its button opens the deathroll window")
+    if G.Deathroll.frame then G.Deathroll.frame:Hide() end
+    local tg = rowOf("team")
+    check(tg and tg.entry.usage and tg.entry.usage:find("/bisgamba team", 1, true) ~= nil, "the team game: its command")
+    -- gamba: its button shows the options window as it always was; in the client the player is standing in the
+    -- game's options panel when he clicks it: it is SHOWN, and HideUIPanel is how the client puts it away
+    local gr = rowOf("gamba")
+    gr.scripts.OnClick(gr, "LeftButton")
+    local sp = newFrame("Frame", "SettingsPanel", UIParent)
+    sp:Show()
+    local keepHUP = rawget(_G, "HideUIPanel")
+    _G.HideUIPanel = function(fr) fr:Hide() end
+    local opens = #SET.opened
+    dash.detail.open.scripts.OnClick(dash.detail.open)
+    check(win:IsShown() and win:GetParent() == parent0 and win:GetScale() == scale0,
+          "gamba's button shows the options window, as it always was")
+    check(not sp:IsShown(), "and puts the game's options panel away first")
+    check(#SET.opened == opens, "and opens no game panel")
+    _G.SettingsPanel, _G.HideUIPanel = nil, keepHUP
+    win:Hide()
+    -- the table section's button opens the table
+    local tb = rowOf("table")
+    tb.scripts.OnClick(tb, "LeftButton")
+    if G.UI.frame then G.UI.frame:Hide() end
+    dash.detail.open.scripts.OnClick(dash.detail.open)
+    check(G.UI.frame and G.UI.frame:IsShown(), "the table section's button opens the table")
+    if G.UI.frame then G.UI.frame:Hide() end
+  end
+  page.frame:Hide()
+  check(win:GetParent() == parent0 and not win:IsShown(), "leaving the page: the window untouched, hidden")
+  G.UI.frame:Hide()
+  spec.open.func()
+  check(G.UI.frame:IsShown(), "the page's button opens the table")
+  G.UI.frame:Hide()
+end
+
+---------------------------------------------------------------- Forever 1.0: new installs start quiet
+-- Arn, 7 Nov: "every new user that we get will have every module turned off ... sounds ... anything that would
+-- make a new user go like okay, this add-on is just making random noises" - "all the main functionalities start
+-- on". The table and hosting are the core (announce stays on: the host's game is played in group chat). And
+-- "everybody that already has the addons installed, I don't wanna change default settings that they have on".
+do
+  local keep = BiSGambaDB
+  local function load(t) BiSGambaDB = t; fire("ADDON_LOADED", "BiSGamba") return BiSGambaDB end
+  -- (a) a brand-new install: nothing saved at all
+  local f = load(nil)
+  check(f.dbver == 8, "new install: stamped dbver 8")
+  check(f.autoOpen == false and f.sound == false and f.whisper == false,
+        "new install: the pop-up, the sounds and the trade whispers start OFF")
+  check(f.announce == true and f.minimap == true and f.combat == true and f.neverOpen == false,
+        "new install: the core starts on (results to the group, the minimap button)")
+  check(G.UI:AutoShow() == false, "new install: a game started by someone else does not pop the window")
+  -- (c) a second load changes nothing
+  local snap = {}
+  for k, v in pairs(f) do if type(v) ~= "table" then snap[k] = v end end
+  f = load(f)
+  local same = true
+  for k, v in pairs(snap) do if f[k] ~= v then same = false end end
+  check(same, "new install, second load: nothing changes")
+  -- a new player who turns them on keeps them on
+  f.sound, f.autoOpen = true, true
+  f = load(f)
+  check(f.sound == true and f.autoOpen == true, "turned on by the player: still on after a reload")
+  -- (b) an existing save from 1.10 (dbver 7) where the three were never stored (read as on)
+  f = load({ dbver = 7, wager = 50, debts = {}, rounds = {}, base = {} })
+  check(f.autoOpen == true and f.sound == true and f.whisper == true and f.dbver == 8,
+        "existing save, keys never stored: the pop-up, sounds and whispers stay ON")
+  f = load(f)
+  check(f.autoOpen == true and f.sound == true and f.whisper == true, "existing save, second load: still on")
+  -- an existing save that had switched them off keeps them off
+  f = load({ dbver = 7, autoOpen = false, sound = false, whisper = false, announce = false })
+  check(f.autoOpen == false and f.sound == false and f.whisper == false and f.announce == false,
+        "existing save with them off: still off, and its own announce choice kept")
+  load(keep)
 end
 
 print(("%d checks, %d failed"):format(pass + fail, fail))

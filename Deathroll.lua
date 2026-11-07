@@ -70,6 +70,14 @@ local function Send(...) G.Comm.SendTo(D.game and D.game.foe, ...) end
 
 function D.Active() return D.game ~= nil and D.game.state ~= "DONE" end
 
+--- May the window open by itself (a challenge coming in)? The table's own rules: "never open anything" and the
+--- pop-up switch ("open on a new game", off for a new install since 2.0). Clicking things yourself always opens it.
+function D.MayOpen()
+  local d = db()
+  if not d then return true end
+  return d.neverOpen ~= true and d.autoOpen ~= false
+end
+
 --- Challenge `foe` from `start` for `wager` gold. Answers true or nil, why.
 function D.Challenge(foe, start, wager)
   if foe then
@@ -205,8 +213,16 @@ function D.OnComm(msg, sender)
     if D.Active() then G.Comm.SendTo(sender, "DRNO", id, "busy") return end
     D.game = { id = id, foe = sender, start = start, wager = wager, max = start, rolls = {},
                mine = false, first = sender, state = "INVITED", at = K.Now() }
-    if G.Sound then pcall(G.Sound.Play, "open") end
-    D.Show()
+    if G.Sound then pcall(G.Sound.Play, "open") end     -- (Sound.Play keeps quiet when sounds are off)
+    -- NEVER OPENS WHAT THE PLAYER SHUT (Forever 1.0 sweep, 7 Nov): "never open anything" and the pop-up switch
+    -- hold here too - the challenge waits, one chat line says who and how to answer
+    if D.MayOpen() then
+      D.Show()
+    else
+      K.Print(("deathroll: %s challenges you - 1-%d for %s. %s to answer, within %d seconds"):format(sender, start,
+        wager > 0 and K.Gold(wager) or "fun", T.text("ink", "/bisgamba dr"), D.ANSWER))
+      if D.frame and D.frame:IsShown() then D.Refresh() end
+    end
     return
   end
   if not g or g.id ~= id or g.foe ~= sender then return end
@@ -648,9 +664,21 @@ end
 -- in it - pick the wager, CHALLENGE. The game's own way in (Menu.ModifyMenu): a line added, nothing replaced;
 -- never the guild roster's menus (a line there left the game's promote/kick refused - BiS Tools learned it).
 --------------------------------------------------------------------
-D.MENUS = { "PARTY", "RAID_PLAYER", "RAID", "TARGET", "FOCUS", "PLAYER", "FRIEND" }
+-- Not the Friends list (Forever 1.0 sweep, 7 Nov): a line there tainted the list's refresh in BiS Tools (20 Oct,
+-- SearchFriends refused). A friend in your group or guild is still on their party/raid/target menu.
+D.MENUS = { "PARTY", "RAID_PLAYER", "RAID", "TARGET", "FOCUS", "PLAYER" }
+
+--- CAN A LINE GO INTO THE GAME'S MENU HERE? Not inside an instance: there the menu's own frame rects are secret,
+--- and once an addon has put a line in, Blizzard's layout runs tainted and may not do sums on them - the menu
+--- breaks (no Report Player, no Copy Name; BiS Tools in a battleground, 13 Oct). "Inside?" must read a PLAIN false.
+function D.MenuSafe()
+  if not IsInInstance then return true end
+  local ok, inside = pcall(IsInInstance)
+  return ok and K.Known(inside) == false
+end
 
 --- The player a menu is about, by whole name (Forever's "Frank G"), when they run BiS Gamba and can be challenged.
+--- Every answer the client gives about the unit goes through Known/Plain first: a secret is never decided on.
 function D.MenuWho(ctx)
   if type(ctx) ~= "table" then return nil end
   local name
@@ -658,12 +686,14 @@ function D.MenuWho(ctx)
   if okU and type(unit) == "string" then
     local okP, isPlayer = pcall(UnitIsPlayer, unit)
     local okMe, me = pcall(UnitIsUnit, unit, "player")
-    if not (okP and isPlayer) or not okMe or me then return nil end
+    if not (okP and K.Known(isPlayer)) or not okMe then return nil end
+    if me ~= nil and K.Known(me) == nil then return nil end        -- a secret "is it me?": no line
+    if K.Known(me) then return nil end                              -- (a plain no may be false or nil)
     local okN, n = pcall(GetUnitName, unit, false)
-    name = okN and n or nil
+    name = okN and K.Plain(n) or nil
   else
     local okN, n = pcall(function() return ctx.name end)
-    name = okN and n or nil
+    name = okN and K.Plain(n) or nil
   end
   if type(name) ~= "string" or name == "" then return nil end
   name = K.Bare(name)
@@ -675,7 +705,7 @@ function D.MenuWho(ctx)
 end
 
 function D.MenuLine(root, ctx)
-  if not (root and root.CreateButton) or D.Active() then return end
+  if not (root and root.CreateButton) or D.Active() or not D.MenuSafe() then return end
   local who = D.MenuWho(ctx)
   if not who then return end
   if root.CreateDivider then root:CreateDivider() end
