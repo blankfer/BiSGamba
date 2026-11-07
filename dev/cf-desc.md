@@ -39,7 +39,9 @@ Biggest winners and losers, all-time, with win and loss records. Deathrolls coun
 
 ## Sound and settings
 
-Short sounds for last call, your turn to roll, wins and losses. With [FojjiCore](https://www.curseforge.com/wow/addons/fojjicore) installed, one of its voice packs speaks them instead. Never the raid-warning sound. Settings live behind the **options** button or `/bisgamba config`.
+Short sounds for last call, your turn to roll, wins and losses. With [FojjiCore](https://www.curseforge.com/wow/addons/fojjicore) installed, one of its voice packs speaks them instead. Never the raid-warning sound. Settings live behind the **options** button, a right-click on the minimap button, `/bisgamba config`, or the game's own options: Esc > Options > AddOns > **BiS>** > BiS> Gamba.
+
+A new install starts quiet: the table and hosting are on, and the sounds, the window popping up when someone else deals, and the trade whispers wait until you switch them on.
 
 ## Works with
 

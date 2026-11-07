@@ -123,7 +123,13 @@ Everything below is a `/bisgamba` command, but there is also a window for it:
 **options** in the header (click again to close it), or `/bisgamba config`. A flat panel with a left rail -
 **Table** (roll range, stakes, timers, joining), **Ledger** (board scope,
 whisper, wipes), **Sound** (cues, channel, voice pack), **Display** (view,
-scale, zoom, minimap, combat, pop-up behaviour) - in BiS violet.
+scale, zoom, minimap, combat, pop-up behaviour) - in BiS violet. The same window
+sits on the **BiS> Gamba** page in the game's own options (Esc > Options > AddOns > BiS>).
+
+A new install (2.0 on) starts quiet: the table, hosting and results in group chat are
+on; the window popping up when someone else deals (or challenges you to a deathroll),
+the sound cues and the trade whispers start off - each has its switch in the options.
+A copy that was already installed keeps what it had.
 
 ## Commands
 
@@ -166,7 +172,8 @@ scale, zoom, minimap, combat, pop-up behaviour) - in BiS violet.
 /bisgamba scale X | zoom X | npc Race 2|3 id | minimap | fixtrade | tradedebug | reset
 ```
 
-Minimap button: left opens the table, right rolls.
+Minimap button: left-click the table, right-click options (since 2.0; it used to roll -
+the roll is the table's own button).
 
 ## Development
 
