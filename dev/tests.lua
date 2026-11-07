@@ -3109,14 +3109,22 @@ do
     check(wordGroup[long] ~= nil, "short: '" .. s .. "' points at a word the parser takes: " .. tostring(long))
     check(wordGroup[s] == nil, "short: '" .. s .. "' does not take a word the parser already has")
   end
+  local NO = G.NO_SHORT or {}
   for _, gr in ipairs(groups) do
     local ok = false
     for _, wd in ipairs(gr) do
-      if #wd <= 4 then ok = true end
+      if #wd <= 4 or NO[wd] then ok = true end
       for s, long in pairs(SHORT) do if long == wd then ok = true end end
     end
     check(ok, "short: '" .. table.concat(gr, "/") .. "' answers to a word of 4 letters or fewer")
   end
+  -- NO SHORT WORD FOR WHAT DESTROYS AT ONCE (6 Nov review: "clr" wiped every debt with no question asked)
+  for long in pairs(NO) do
+    local has = false
+    for _, l in pairs(SHORT) do if l == long then has = true end end
+    check(not has, "short: '" .. long .. "' destroys at once and has NO short word")
+  end
+  check(NO.clear and NO.reset and not SHORT.clr and not SHORT.rst, "short: clear and reset keep only their long names")
   -- the help shows them
   chat = {}
   SlashCmdList.BISGAMBA("help")

@@ -4427,11 +4427,14 @@ end
 -- short ones stay where they were in the parser (open, call, end, owe, join, opt, dr, top); these are the new ones.
 -- None of them is a word the parser already takes (the suite reads the parser to check).
 G.SHORT = {
-  hid = "hidden", tbl = "table", clr = "clear", nag = "nudge", rmnd = "remind", aj = "autojoin", copy = "autocopy",
+  hid = "hidden", tbl = "table", nag = "nudge", rmnd = "remind", aj = "autojoin", copy = "autocopy",
   tell = "whisper", who = "users", hush = "quiet", size = "scale", snd = "sound", vox = "voice", pop = "popup",
-  nvr = "neveropen", cmbt = "combat", mini = "minimap", tdbg = "tradedebug", fix = "fixtrade", rst = "reset",
+  nvr = "neveropen", cmbt = "combat", mini = "minimap", tdbg = "tradedebug", fix = "fixtrade",
   take = "adopt", scp = "scope", wipe = "wipestats", rnds = "rounds", rbld = "rebuild", hist = "history",
 }
+-- NO SHORT WORD, ON PURPOSE: these destroy at once, with no question asked - a three-letter slip must not wipe the
+-- table's debts or the round in play. (wipestats keeps "wipe": it still needs "yes" after it.)
+G.NO_SHORT = { clear = "wipes every debt at once", reset = "throws away the table in play" }
 
 local function Help()
   Print(T.text("accent", "BiS Gamba") .. " " .. T.text("muted", G.VersionMark()) .. " - commands"
@@ -4464,7 +4467,7 @@ local function Help()
     "/bisgamba wipestats (wipe) yes   throw away your ledger",
     "/bisgamba wipestats (wipe) all   ask everyone with the addon to wipe theirs too",
     "/bisgamba paid A B     mark A's debt to B paid",
-    "/bisgamba clear (clr)  wipe every debt",
+    "/bisgamba clear        wipe every debt (no short word: it asks nothing)",
     "/bisgamba flat         toggle: loser pays the difference (default) or the full wager",
     "/bisgamba autojoin (aj)   toggle: seat anyone in the group who /rolls the range (default off: only 1 / join counts)",
     "/bisgamba quiet (hush) toggle chat announcements",
@@ -4477,7 +4480,7 @@ local function Help()
     "/bisgamba users (who)  who else you have seen running BiS Gamba",
     "/bisgamba autocopy (copy) toggle selecting the amount for you when a trade opens",
     "/bisgamba scale (size) X | zoom X | npc Race 2|3 id",
-    "/bisgamba minimap (mini) | fixtrade (fix) | tradedebug (tdbg) | reset (rst)",
+    "/bisgamba minimap (mini) | fixtrade (fix) | tradedebug (tdbg) | reset",
   }
   for _, l in ipairs(lines) do DEFAULT_CHAT_FRAME:AddMessage("  " .. T.text("ink2", l)) end
 end
