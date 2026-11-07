@@ -51,7 +51,12 @@ function Frame:SetSize(w, h) self.w, self.h, self.wSet = w, h, true end
 function Frame:GetWidth() return self.w end
 function Frame:SetText(t) self.text_ = t end
 function Frame:GetText() return self.text_ end
-function Frame:CreateTexture() return newFrame("Texture", nil, self) end
+-- the layer is kept: a HIGHLIGHT texture draws OVER the text, so the hover rule caps its wash
+function Frame:CreateTexture(name, layer)
+  local t = newFrame("Texture", name, self)
+  t.layer = layer
+  return t
+end
 -- EVERY LABEL, KEPT, WITH ITS PARENT AND ITS FONT SIZE (6 Oct 2026, port of BiSTools' fit check).
 -- The template names a font object; the label takes that object's size the way the client
 -- does. Before, every label here was "9 pt" whatever it was made with. fitsIn() walks labels.
@@ -84,7 +89,10 @@ end
 function Frame:SetHeight(h) self.h = h end
 function Frame:SetWidth(w) self.w, self.wSet = w, true end
 function Frame:GetHeight() return self.h end
-function Frame:SetTextColor() end
+-- colours are KEPT (6 Nov 2026, the hover rule): a mock that threw them away made "the label lights up under the
+-- mouse" untestable - every hover test passed on a button that did nothing
+function Frame:SetTextColor(r, g, b) self.textColor = { r, g, b } end
+function Frame:SetBackdropBorderColor(r, g, b, a) self.borderColor = { r, g, b, a } end
 function Frame:SetAllPoints(rel) self.all = rel or true end
 -- record anchoring so a window left unanchored (opens off-screen) is a red test.
 -- The whole anchor is kept, in the client's forms: SetPoint(p) and SetPoint(p, x, y) are
@@ -254,7 +262,17 @@ tinsert = table.insert
 STANDARD_TEXT_FONT = "Fonts\\FRIZQT__.TTF"
 -- a distinctive version so the "registers the TOC version, not a literal" assert
 -- can tell a dynamic read from a hardcoded string
-if not GetAddOnMetadata then function GetAddOnMetadata() return "9.9.9-toc" end end
+-- The client answers only the keys the TOC has: a released zip has no "X-BiS-Build" line, so that key is nil there
+-- (6 Nov 2026: the old stub answered "9.9.9-toc" for EVERY key - a build stamp that every release would seem to have).
+-- __tocBuild is the line deploy.sh adds to the game's copy; a test sets it.
+if not GetAddOnMetadata then
+  function GetAddOnMetadata(addon, key)
+    if addon ~= "BiSGamba" then return nil end
+    if key == "Version" then return "9.9.9-toc" end
+    if key == "X-BiS-Build" then return _G.__tocBuild end
+    return nil
+  end
+end
 -- globals LibBiSComm can reach for (all guarded on its side); enough to boot and,
 -- if a test drives it, answer WHERE/SUM without erroring
 LE_PARTY_CATEGORY_INSTANCE = 2
@@ -2951,6 +2969,188 @@ do
   check(sent[#sent] and sent[#sent].msg == "PONG", "forever: a party member's table messages are heard (PING -> PONG)")
   D.game = nil
   _G.GetUnitName, C_ChatInfo.SendAddonMessage = realGUN, realSend
+end
+
+---------------------------------------------------------------- THE FIVE UI RULES (Arn, 6 Nov 2026)
+-- short words, hover pop, Escape, readable size, the version mark. BiS Tools is the model.
+do
+  local T = G.T
+  local function near(a, b) return type(a) == "number" and math.abs(a - b) < 0.01 end
+  local function is(c, name)
+    if type(c) ~= "table" then return false end
+    local r, g, b = T.rgb(name)
+    return near(c[1], r) and near(c[2], g) and near(c[3], b)
+  end
+  -- what the eye sees of a wash: its own colour's alpha times the texture's alpha
+  local function wash(t) return t and ((t.color and t.color[4] or 1) * t:GetAlpha()) or 0 end
+  local function enter(f) if f.scripts.OnEnter then f.scripts.OnEnter(f) end end
+  local function leave(f) if f.scripts.OnLeave then f.scripts.OnLeave(f) end end
+
+  -- RULE 2, HOVER POP: the shared button (every button on the table and the deathroll)
+  local b = G.Kit.SmallButton(UIParent, "test", 40)
+  check(b.wash and wash(b.wash) == 0, "hover: a button at rest has no wash")
+  enter(b)
+  local w = wash(b.wash)
+  check(w >= 0.3 and w <= 0.35, "hover: a button under the mouse washes (0.3-0.35): " .. tostring(w))
+  check(is(b.borderColor, "accent"), "hover: and its edge turns accent")
+  check(is(b.text.textColor, "ink"), "hover: and its label goes to full brightness")
+  leave(b)
+  check(wash(b.wash) == 0 and is(b.text.textColor, "ink2"), "hover: the mouse gone, the button rests again")
+  G.Kit.SetHot(b, true); enter(b); leave(b)
+  check(is(b.text.textColor, "accent"), "hover: a lit (next-to-press) button keeps its accent label after the mouse")
+  G.Kit.SetHot(b, false)
+  G.Kit.SetOff(b, true); enter(b)
+  check(wash(b.wash) == 0, "hover: a greyed-out button does not light up (it does nothing)")
+  leave(b)
+  check(is(b.text.textColor, "dim"), "hover: and stays dim after")
+  G.Kit.SetOff(b, false)
+  -- a sample of the real sites
+  for _, k in ipairs({ "cfgBtn", "boardBtn", "debtsBtn", "joinBtn", "drBtn" }) do
+    local s = G.UI[k]
+    check(s and s.wash ~= nil, "hover: the table's " .. k .. " has the wash")
+  end
+  -- the debt panel's "N debts between others" row opens the rest: it lights up
+  local row = G.UI.rows[1]
+  row.toggle = true
+  enter(row)
+  w = wash(row.wash)
+  check(w >= 0.3 and w <= 0.35, "hover: the clickable debt row washes: " .. tostring(w))
+  check(row.bar and row.bar.shown and is(row.bar.color, "accent") and (row.bar.w or 0) >= 2 and (row.bar.w or 0) <= 3,
+        "hover: and shows a 2-3 px accent bar on its left")
+  leave(row)
+  check(wash(row.wash) == 0 and row.bar and not row.bar.shown, "hover: the debt row rests when the mouse leaves")
+  row.toggle = nil
+  enter(row)
+  check(wash(row.wash) == 0, "hover: a plain debt line (nothing to click) does not light up")
+  leave(row)
+  -- a seat: click pays / removes - it lights up over the portrait as a tint, the edge does the popping
+  local seat
+  for _, s in ipairs({ G.UI.mySeat, unpack(G.UI.seats) }) do if s and s.person and not seat then seat = s end end
+  check(seat ~= nil, "hover: a seated person to hover")
+  if seat then
+    enter(seat.hit)
+    w = wash(seat.hit.wash)
+    check(w >= 0.15 and w <= 0.28, "hover: a seat tints (over the art: <= 0.28): " .. tostring(w))
+    check(seat.hit.edge and seat.hit.edge.shown, "hover: and its accent edge shows")
+    leave(seat.hit)
+    check(wash(seat.hit.wash) == 0 and seat.hit.edge and not seat.hit.edge.shown, "hover: the seat rests when the mouse leaves")
+  end
+  -- the table view's big square
+  local big = G.Table.bigBtn
+  check(big ~= nil, "hover: the table view's big square exists")
+  if big then
+    check(wash(big.wash) == 0, "hover: the big square at rest")
+    enter(big); w = wash(big.wash)
+    check(w >= 0.3 and w <= 0.35, "hover: the big square washes: " .. tostring(w))
+    leave(big)
+    check(wash(big.wash) == 0, "hover: and rests")
+  end
+  -- the deathroll's people: HIGHLIGHT draws over the name, so a tint plus a bar
+  local Dr = G.Deathroll
+  Dr.Build()
+  local r = Dr.frame.rows[1]
+  w = wash(r.hl)
+  check(r.hl.layer == "HIGHLIGHT" and is(r.hl.color, "accent") and w > 0.08 and w <= 0.28,
+        "hover: a deathroll row tints accent on HIGHLIGHT (<= 0.28, more than the old 0.08): " .. tostring(w))
+  check(r.bar and r.bar.layer == "HIGHLIGHT" and is(r.bar.color, "accent") and (r.bar.w or 0) >= 2 and (r.bar.w or 0) <= 3,
+        "hover: and a 2-3 px accent bar on its left")
+
+  -- RULE 3, ESCAPE: every top-level window (the trade panel rides the TradeFrame's own Escape)
+  G.UI:BuildOptions()
+  local esc = {}
+  for _, n in ipairs(UISpecialFrames) do esc[n] = true end
+  for _, n in ipairs({ "BiSGambaFrame", "BiSGambaDeathroll", "BiSGambaOptions" }) do
+    check(esc[n], "escape: " .. n .. " closes on Escape")
+  end
+
+  -- RULE 4, READABLE SIZE: the main window keeps the player's own scale (the options test above stubbed
+  -- SetScale on it; the client's own comes back)
+  G.UI.frame.SetScale = nil
+  local scaleBefore = G.db.scale
+  SlashCmdList.BISGAMBA("scale 1.1"); G.UI:Refresh()
+  check(near(G.UI.frame:GetScale(), 1.1), "size: the table keeps the player's scale (db.scale), nothing overrides it")
+  SlashCmdList.BISGAMBA("scale " .. tostring(scaleBefore or 1))
+
+  -- RULE 5, THE VERSION MARK: faint, in the footer (never a second label in the header bar)
+  _G.__tocBuild = nil
+  check(G.VersionMark and G.VersionMark() == "9.9.9-toc", "version: a released copy shows just the version: " .. tostring(G.VersionMark and G.VersionMark()))
+  _G.__tocBuild = "feat/ui-rules@c914fbf+ 1106-1841"
+  check(G.VersionMark and G.VersionMark() == "9.9.9-toc  c914fbf+ 1106-1841",
+        "version: a deployed copy shows the version, the commit and when: " .. tostring(G.VersionMark and G.VersionMark()))
+  local mark = G.UI.verMark
+  check(mark ~= nil, "version: the table has a version mark")
+  if mark then
+    G.UI:Mark()
+    check(strip(mark:GetText()) == "9.9.9-toc  c914fbf+ 1106-1841", "version: the mark reads the stamp: " .. strip(mark:GetText()))
+    check(mark:GetAlpha() < 1, "version: and is faint")
+    check(mark.points and mark.points[1] and mark.points[1].rel == G.UI.drBtn, "version: it sits in the footer, beside the deathroll button")
+  end
+  _G.__tocBuild = nil
+  if mark then G.UI:Mark() end
+
+  -- RULE 1, SHORT WORDS: every word the parser takes that is longer than 4 letters answers to one of 4 or fewer.
+  -- The words are read from the parser itself, one group per elseif (the words on one line do the same thing).
+  local src = assert(io.open("BiSGamba.lua", "r")):read("*a")
+  local body = src:match("local function Slash%(msg%)(.-)SLASH_BISGAMBA1")
+  check(body ~= nil, "short: the parser is found")
+  local groups, wordGroup = {}, {}
+  for line in (body or ""):gmatch("[^\n]+") do
+    if line:match("^%s*e?l?s?e?if ") then
+      local gr = {}
+      for wd in line:gmatch('cmd == "(%a+)"') do gr[#gr + 1] = wd end
+      if #gr > 0 then groups[#groups + 1] = gr; for _, wd in ipairs(gr) do wordGroup[wd] = gr end end
+    end
+  end
+  check(#groups > 30, "short: the parser's words are read: " .. #groups .. " groups")
+  check(type(G.SHORT) == "table", "short: the short words are a table (G.SHORT)")
+  local SHORT = G.SHORT or {}
+  for s, long in pairs(SHORT) do
+    check(#s <= 4, "short: '" .. s .. "' is 4 letters or fewer")
+    check(wordGroup[long] ~= nil, "short: '" .. s .. "' points at a word the parser takes: " .. tostring(long))
+    check(wordGroup[s] == nil, "short: '" .. s .. "' does not take a word the parser already has")
+  end
+  local NO = G.NO_SHORT or {}
+  for _, gr in ipairs(groups) do
+    local ok = false
+    for _, wd in ipairs(gr) do
+      if #wd <= 4 or NO[wd] then ok = true end
+      for s, long in pairs(SHORT) do if long == wd then ok = true end end
+    end
+    check(ok, "short: '" .. table.concat(gr, "/") .. "' answers to a word of 4 letters or fewer")
+  end
+  -- NO SHORT WORD FOR WHAT DESTROYS AT ONCE (6 Nov review: "clr" wiped every debt with no question asked)
+  for long in pairs(NO) do
+    local has = false
+    for _, l in pairs(SHORT) do if l == long then has = true end end
+    check(not has, "short: '" .. long .. "' destroys at once and has NO short word")
+  end
+  check(NO.clear and NO.reset and not SHORT.clr and not SHORT.rst, "short: clear and reset keep only their long names")
+  -- the help shows them
+  chat = {}
+  SlashCmdList.BISGAMBA("help")
+  local help = table.concat(chat, "\n")
+  for s, long in pairs(SHORT) do
+    local shown = false
+    for _, l in ipairs(chat) do if l:find(long, 1, true) and l:find("(" .. s .. ")", 1, true) then shown = true end end
+    check(shown, "short: the help shows '" .. long .. " (" .. s .. ")'")
+  end
+  check(help:find("(owe)", 1, true) and help:find("(opt)", 1, true) and help:find("(top)", 1, true),
+        "short: the help shows the old short words too (owe, opt, top)")
+  -- and a short word does what its long word does
+  local was = G.db.announce
+  SlashCmdList.BISGAMBA("hush"); check(G.db.announce == not was, "short: hush = quiet")
+  SlashCmdList.BISGAMBA("quiet"); check(G.db.announce == was, "short: quiet toggles it back")
+  was = G.db.autoJoin
+  SlashCmdList.BISGAMBA("aj"); check(G.db.autoJoin == not was, "short: aj = autojoin")
+  SlashCmdList.BISGAMBA("autojoin"); check(G.db.autoJoin == was, "short: autojoin toggles it back")
+  local scale0 = G.db.scale
+  SlashCmdList.BISGAMBA("size 1.3"); check(near(G.db.scale, 1.3) and near(G.UI.frame:GetScale(), 1.3), "short: size 1.3 = scale 1.3")
+  SlashCmdList.BISGAMBA("scale " .. tostring(scale0 or 1)); check(near(G.db.scale, scale0 or 1), "short: scale puts it back")
+  chat = {}
+  SlashCmdList.BISGAMBA("RNDS"); check(lastChat():find("rounds on file", 1, true) or table.concat(chat):find("rounds on file", 1, true),
+                                       "short: RNDS (any case) = rounds")
+  chat = {}
+  SlashCmdList.BISGAMBA("hid"); check(table.concat(chat):find("hidden chat", 1, true), "short: hid = hidden")
 end
 
 print(("%d checks, %d failed"):format(pass + fail, fail))
