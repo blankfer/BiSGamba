@@ -19,7 +19,7 @@ Frame.__index = function(t, k)
 end
 local MODELS = {}                 -- every 3D model made, for a window's scale change to reach
 local function newFrame(kind, name, parent)
-  local f = setmetatable({ kind = kind, name = name, parent = parent, scripts = {}, shown = true, w = 100, h = 100 }, Frame)
+  local f = setmetatable({ kind = kind, name = name, parent = parent, scripts = {}, shown = true, w = 0, h = 0 }, Frame)
   if name then _G[name] = f end
   if kind == "DressUpModel" or kind == "PlayerModel" then MODELS[#MODELS + 1] = f end
   return f
@@ -93,7 +93,16 @@ function Frame:GetHeight() return self.h end
 -- mouse" untestable - every hover test passed on a button that did nothing
 function Frame:SetTextColor(r, g, b) self.textColor = { r, g, b } end
 function Frame:SetBackdropBorderColor(r, g, b, a) self.borderColor = { r, g, b, a } end
+-- SetAllPoints is two anchors in the client, so ClearAllPoints takes it away too (8 Nov, the BiS> dashboard kit:
+-- its lamps and bars are anchored, never SetAllPoints + SetPoint - a mock that kept `all` forever could not see that)
 function Frame:SetAllPoints(rel) self.all = rel or true end
+-- the BiS> dashboard kit's calls, kept the way the client keeps them (an unsized frame answers 0 wide, 0 tall -
+-- newFrame above, 8 Nov: it was a made-up 100 - and GetStringHeight is left to the catch-all nil: before layout
+-- the client cannot say)
+function Frame:EnableMouse(v) self.mouse = v and true or false end
+function Frame:RegisterForClicks(...) self.clicks = { ... } end
+function Frame:SetWordWrap(v) self.wrap = v and true or false end
+function Frame:SetJustifyV(v) self.justV = v end
 -- record anchoring so a window left unanchored (opens off-screen) is a red test.
 -- The whole anchor is kept, in the client's forms: SetPoint(p) and SetPoint(p, x, y) are
 -- relative to the parent, relPoint = point; rel nil = parent; a name string = that frame.
@@ -103,7 +112,7 @@ function Frame:SetPoint(point, rel, rp, x, y)
   self.points = self.points or {}
   self.points[#self.points + 1] = { point = point, rel = rel, relPoint = rp or point, x = x or 0, y = y or 0 }
 end
-function Frame:ClearAllPoints() self.points = {} end
+function Frame:ClearAllPoints() self.points = {}; self.all = nil end
 function Frame:GetNumPoints() return #(self.points or {}) end
 function Frame:SetEnabled(v) self.enabled = v and true or false end
 function Frame:SetChecked(v) self.checked = v and true or false end
@@ -3321,8 +3330,12 @@ do
   G.db.autoOpen, G.db.sound = true, true
   check(spec.status() == "pop-up on  -  sounds on", "status, both on: " .. tostring(spec.status()))
   G.db.autoOpen, G.db.sound = keepA, keepS
-  -- Settings minor 2 (Arn, 7 Nov: "we esentially just took the old option window kept it the same size and nestels
-  -- it inside a bigger window"): the page never re-parents or shrinks the window; a button on it shows the window
+  -- BiSTheme Settings minor 3 (Arn, 8 Nov, of BiS> Tools: "it looks way way better do it for the other ones"): the
+  -- page is the kit's DASHBOARD - Gamba's sections down the left, the picked one's settings big on the right. The
+  -- options window is never taken in (minor 2, Arn 7 Nov: "dont just shrink remake them all"): its rows' own tables
+  -- are handed over, and the window stays exactly as it always was.
+  check(type(spec.build) == "function" and type(spec.refresh) == "function", "the page is a dashboard: build + refresh")
+  check(spec.window == nil, "no stand-in 'options window' button on a dashboard page")
   local win = G.UI:BuildOptions()
   win:Hide()
   local parent0, scale0 = win:GetParent(), win:GetScale()
@@ -3330,21 +3343,126 @@ do
   check(win:GetParent() == parent0 and win:GetParent() ~= page.frame.body, "showing the page leaves the options window's parent alone")
   check(win:GetScale() == scale0, "showing the page leaves the options window's scale alone: " .. tostring(win:GetScale()))
   check(not win:IsShown(), "showing the page does not show the options window")
-  local ob = page.frame.optBtn
-  check(ob ~= nil and ob:IsShown(), "the page has its 'the options window' button, shown")
-  -- in the client the player is standing in the game's options panel when he clicks it: it is SHOWN, and
-  -- HideUIPanel is how the client puts it away
-  local sp = newFrame("Frame", "SettingsPanel", UIParent)
-  sp:Show()
-  local keepHUP = rawget(_G, "HideUIPanel")
-  _G.HideUIPanel = function(fr) fr:Hide() end
-  local opens = #SET.opened
-  ob.scripts.OnClick(ob, "LeftButton")
-  check(win:IsShown() and win:GetParent() == parent0, "the page's button shows the options window, as it always was")
-  check(not sp:IsShown(), "the page's button puts the game's options panel away first")
-  check(#SET.opened == opens, "the page's button opens no game panel")
-  _G.SettingsPanel, _G.HideUIPanel = nil, keepHUP
-  win:Hide()
+  check(page.frame.optBtn == nil, "and draws no stand-in button")
+  local dash = page.frame.body and page.frame.body.dash
+  check(dash ~= nil, "showing the page builds the dashboard (body.dash)")
+  if dash then
+    local want = { "table", "timing", "ledger", "deathroll", "team game", "sound", "display", "gamba" }
+    local got = {}
+    for i, r in ipairs(dash.rows) do got[i] = r.entry.title end
+    check(table.concat(got, ",") == table.concat(want, ","), "one list row per section, in order: " .. table.concat(got, ","))
+    check(dash.list.head:GetText() == "SECTIONS", "the list's title: " .. tostring(dash.list.head:GetText()))
+    local function rowOf(key) for _, r in ipairs(dash.rows) do if r.entry.key == key then return r end end end
+    -- NO SECOND COPY: every setting on the dashboard is the options window's own row table, and every row of the
+    -- window is somewhere on the dashboard
+    local winRow, onDash = {}, {}
+    for _, r in ipairs(win.rows or {}) do if r.opt then winRow[r.opt] = r end end
+    local same, n = true, 0
+    for _, e in ipairs(dash.entries) do
+      for _, o in ipairs(e.options or {}) do n = n + 1; onDash[o] = true; if not winRow[o] then same = false end end
+    end
+    check(n > 0 and same, "every dashboard setting is the options window's own row table (" .. n .. ")")
+    local missing = {}
+    -- (the window's addon-made rows; the suite's own over-long test row above is not one of them)
+    for _, sec in ipairs(G.UI.sections or {}) do
+      for _, o in ipairs(sec.rows) do
+        if not onDash[o] then missing[#missing + 1] = tostring(o.label) end
+        if not winRow[o] then missing[#missing + 1] = tostring(o.label) .. " (not in the window)" end
+      end
+    end
+    check(G.UI.sections and #missing == 0, "every row of the options window is on the dashboard; missing: " .. table.concat(missing, ", "))
+    -- the table section is picked first, its settings shown
+    check(dash.selected == "table" and dash.pages.table and #dash.pages.table == 4 and dash.pages.table[1]:IsShown(),
+          "the table section picked first, its four settings shown")
+    check(dash.detail.open:IsShown() and dash.detail.open.label:GetText() == "open the table",
+          "the table section's button opens the table: " .. tostring(dash.detail.open.label:GetText()))
+    -- picking sound shows its rows (the table's go)
+    local sr = rowOf("sound")
+    sr.scripts.OnClick(sr, "LeftButton")
+    check(dash.selected == "sound" and dash.pages.sound and dash.pages.sound[1]:IsShown() and not dash.pages.table[1]:IsShown(),
+          "picking sound shows its settings, the table's go")
+    check(dash.detail.name:GetText() == "sound" and dash.detail.switch:IsShown()
+          and tostring(dash.detail.usage:GetText()):find("/bisgamba sound", 1, true) ~= nil,
+          "sound: its name, its own switch, its command at the foot: " .. tostring(dash.detail.usage:GetText()))
+    -- flipping a setting in the dashboard changes the SAME saved value the options window shows
+    local cues = dash.pages.sound[1]
+    local wcues
+    for o, r in pairs(winRow) do if o.label == "sound cues" then wcues = r end end
+    check(cues.opt.label == "sound cues" and wcues ~= nil, "the sound cues row, on both")
+    G.db.sound = false
+    win:Paint()
+    cues.sw.scripts.OnClick(cues.sw)
+    check(G.db.sound == true, "flipping sound cues in the dashboard: the saved value is on")
+    win:Paint()
+    check(wcues.ctl.on == true, "and the options window's own row agrees after its Paint")
+    win:Show()
+    cues.sw.scripts.OnClick(cues.sw)
+    check(G.db.sound == false and wcues.ctl.on == false, "the window open: the dashboard repaints it as it goes")
+    win:Hide()
+    -- a stepper on the dashboard: the same value the window shows
+    local tr = rowOf("timing")
+    tr.scripts.OnClick(tr, "LeftButton")
+    local lc = dash.pages.timing[1]
+    G.db.lastCall = 10
+    lc.plus.scripts.OnClick(lc.plus)
+    check(G.db.lastCall == 11 and lc.val:GetText() == "11s", "the last call stepper: 10 -> 11, saved, shown: " .. tostring(lc.val:GetText()))
+    G.db.lastCall = 30
+    lc.plus.scripts.OnClick(lc.plus)
+    check(G.db.lastCall == 30, "the stepper clamps at the window's own max")
+    G.db.lastCall = 10
+    -- THE SECTION SWITCH goes through the same setter as its slash command (Own.sound)
+    sr.scripts.OnClick(sr, "LeftButton")
+    local realSound, calls = G.Own.sound, 0
+    G.Own.sound = function(on) calls = calls + 1; return realSound(on) end
+    G.db.sound = true
+    SlashCmdList.BISGAMBA("sound")
+    check(calls == 1 and G.db.sound == false, "/bisgamba sound goes through Own.sound: " .. calls)
+    dash.detail.switch.scripts.OnClick(dash.detail.switch)
+    check(calls == 2 and G.db.sound == true and sr.state:GetText() == "ON", "the big switch: the same Own.sound, the list row says ON")
+    sr.scripts.OnClick(sr, "RightButton")
+    check(calls == 3 and G.db.sound == false and sr.state:GetText() == "off", "right-click in the list: the same setter again")
+    check(cues.label:GetAlpha() < 1, "sounds off: their settings grey")
+    G.Own.sound = realSound
+    -- refresh: a value changed elsewhere shows the next time the page opens
+    page.frame:Hide()
+    G.db.sound = true
+    page.frame:Show()
+    check(sr.state:GetText() == "ON", "the page paints again each time it is shown")
+    -- deathroll: no settings, a window of its own, its command
+    local dr = rowOf("deathroll")
+    dr.scripts.OnClick(dr, "LeftButton")
+    check(dash.detail.none:IsShown() and dash.detail.open:IsShown() and not dash.detail.switch:IsShown()
+          and tostring(dash.detail.usage:GetText()):find("/bisgamba dr", 1, true) ~= nil,
+          "deathroll: nothing to set, its window button, its command")
+    dash.detail.open.scripts.OnClick(dash.detail.open)
+    check(G.Deathroll.frame ~= nil and G.Deathroll.frame:IsShown(), "its button opens the deathroll window")
+    if G.Deathroll.frame then G.Deathroll.frame:Hide() end
+    local tg = rowOf("team")
+    check(tg and tg.entry.usage and tg.entry.usage:find("/bisgamba team", 1, true) ~= nil, "the team game: its command")
+    -- gamba: its button shows the options window as it always was; in the client the player is standing in the
+    -- game's options panel when he clicks it: it is SHOWN, and HideUIPanel is how the client puts it away
+    local gr = rowOf("gamba")
+    gr.scripts.OnClick(gr, "LeftButton")
+    local sp = newFrame("Frame", "SettingsPanel", UIParent)
+    sp:Show()
+    local keepHUP = rawget(_G, "HideUIPanel")
+    _G.HideUIPanel = function(fr) fr:Hide() end
+    local opens = #SET.opened
+    dash.detail.open.scripts.OnClick(dash.detail.open)
+    check(win:IsShown() and win:GetParent() == parent0 and win:GetScale() == scale0,
+          "gamba's button shows the options window, as it always was")
+    check(not sp:IsShown(), "and puts the game's options panel away first")
+    check(#SET.opened == opens, "and opens no game panel")
+    _G.SettingsPanel, _G.HideUIPanel = nil, keepHUP
+    win:Hide()
+    -- the table section's button opens the table
+    local tb = rowOf("table")
+    tb.scripts.OnClick(tb, "LeftButton")
+    if G.UI.frame then G.UI.frame:Hide() end
+    dash.detail.open.scripts.OnClick(dash.detail.open)
+    check(G.UI.frame and G.UI.frame:IsShown(), "the table section's button opens the table")
+    if G.UI.frame then G.UI.frame:Hide() end
+  end
   page.frame:Hide()
   check(win:GetParent() == parent0 and not win:IsShown(), "leaving the page: the window untouched, hidden")
   G.UI.frame:Hide()

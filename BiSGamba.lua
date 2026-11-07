@@ -4235,8 +4235,8 @@ function Own.voice(i)
 end
 G.VoiceList = VoiceList
 
--- The option list: sections top to bottom, each a { title, rows }. Rebuilt on
--- open so it reflects whether FojjiCore / LibBiSComm are actually here.
+-- The option list: sections top to bottom, each a { title, rows }. Made once,
+-- after login (UI:Sections), so it reflects whether FojjiCore / LibBiSComm are here.
 function UI:OptionSections()
   local gamba = {
     { kind = "toggle", label = "minimap button",
@@ -4332,11 +4332,19 @@ function UI:OptionSections()
   }
 end
 
+--- The option list, made ONCE and shared: the options window's rows and the BiS> Gamba dashboard take these very
+--- tables (8 Nov, BiSTheme Settings minor 3), so the two can never disagree about a setting. Made the first time
+--- either one is built - after login, so FojjiCore / LibBiSComm are known by then.
+function UI:Sections()
+  if not self.sections then self.sections = self:OptionSections() end
+  return self.sections
+end
+
 -- Build the window from the option list, once. The kit carries the chrome.
 function UI:BuildOptions()
   if self.opt then return self.opt end
   local f = T.Options("BiSGambaOptions", T.OPTIONS and T.OPTIONS.W or 230, "Gamba")
-  for _, sec in ipairs(self:OptionSections()) do
+  for _, sec in ipairs(self:Sections()) do
     f:Section(sec.title)
     for _, row in ipairs(sec.rows) do if row then f:Row(row, db) end end
   end
@@ -4368,12 +4376,72 @@ function UI:ToggleConfig()
   if f:IsShown() then f:Toggle(false) else self:PlaceOptions(f); f:Toggle(true) end
 end
 
+--- THE BiS> GAMBA DASHBOARD (BiSTheme Settings minor 3; Arn, 8 Nov, of BiS> Tools: "it looks way way better do it
+--- for the other ones"). Its sections are the options window's own, their rows the very same tables (UI:Sections),
+--- plus deathroll and the team game, which have a window or a command but nothing to set. Sound has a switch of
+--- its own, through Own.sound - the same setter /bisgamba sound uses.
+function UI:DashEntries()
+  local rows = {}
+  for _, sec in ipairs(self:Sections()) do rows[sec.title] = sec.rows end
+  return {
+    { key = "table", title = "table", options = rows.table, db = db,
+      desc = "The gold game itself: how big the roll is, what the loser pays, who gets a seat, and whether the "
+        .. "results go to group chat.",
+      open = { label = "open the table", func = function() UI:Show() end },
+      usage = "/bisgamba start [N]  -  /bisgamba call  -  /bisgamba go  -  /bisgamba end" },
+    { key = "timing", title = "timing", options = rows.timing, db = db,
+      desc = "How long the countdowns run: the last call before the rolls start, the wait before a round settles, "
+        .. "and when the people still to roll get a nudge.",
+      usage = "/bisgamba call [secs]  -  /bisgamba remind N  -  /bisgamba nudge" },
+    { key = "ledger", title = "ledger", options = rows.ledger, db = db,
+      desc = "Who owes who, and the leaderboard: which rounds count on the board, the balance whispered on a "
+        .. "trade, and wiping the books.",
+      usage = "/bisgamba debts  -  /bisgamba board  -  /bisgamba pay [name]  -  /bisgamba sync" },
+    { key = "deathroll", title = "deathroll", db = db,
+      desc = "One on one: you both roll down from the wager until somebody rolls a 1. Challenge a player in your "
+        .. "group or guild from its window, or from their right-click menu.",
+      open = { label = "open deathroll", func = function() if G.Deathroll then G.Deathroll.Show() end end },
+      usage = "/bisgamba dr [name]" },
+    { key = "team", title = "team game", db = db,
+      desc = "Teams instead of high and low: even players, random sides, each side's rolls added up, and every "
+        .. "loser pays one winner. It is played on the table.",
+      usage = "/bisgamba team [gold]" },
+    { key = "sound", title = "sound", options = rows.sound, db = db,
+      desc = "The cues of a round: a new game, the last call, the countdown, your turn, a win or a loss. Off on a "
+        .. "new install.",
+      switch = { get = function() return db.sound ~= false end, set = function(on) Own.sound(on) end },
+      usage = "/bisgamba sound  (test | sfx | master)  -  /bisgamba voice [name | off]" },
+    { key = "display", title = "display", options = rows.display, db = db,
+      desc = "How the table window looks and when it shows: 2D or 3D portraits, its size, whether it pops up for a "
+        .. "new game and hides in a fight.",
+      usage = "/bisgamba view [2d | 3d | table]  -  /bisgamba popup  -  /bisgamba combat" },
+    { key = "gamba", title = "gamba", options = rows.gamba, db = db,
+      desc = "The addon itself: the minimap button, the shared BiS channel, and putting the table window back in "
+        .. "the middle of the screen.",
+      open = { label = "options window", func = function() UI:OpenConfig() end },
+      usage = "/bisgamba config  -  /bisgamba minimap" },
+  }
+end
+
+--- The dashboard's model: the entries above, and a repaint of Gamba's own windows when something changes there.
+function UI:DashModel()
+  return {
+    entries = function() return UI:DashEntries() end,
+    list = "SECTIONS",
+    onChange = function()
+      if UI.opt and UI.opt:IsShown() then UI.opt:Paint() end
+      if UI.frame and UI.frame:IsShown() then UI:Refresh() end
+    end,
+  }
+end
+
 --- THE ONE OPTIONS HOME (Forever 1.0; Arn, 7 Nov: "they'll just see BiS> ... click into that add-on"): Gamba's
---- page under BiS> in the game's own options (Esc > Options > AddOns): status, plus a button that shows the options
---- window above as it always was (BiSTheme Settings minor 2 never squeezes it inside the page). Once, at login; on
---- a client without the game's panel it does nothing and /bisgamba opt still opens the window.
+--- page under BiS> in the game's own options (Esc > Options > AddOns), drawn as the kit's dashboard (above). The
+--- options window is never taken in: it stays as it always was, and the gamba section's button shows it. Once, at
+--- login; on a client without the game's panel it does nothing and /bisgamba opt still opens the window.
 function G.SettingsHome()
   if not T.SettingsPage then return nil end
+  local d
   return T.SettingsPage("BiSGamba", {
     title = "Gamba",
     about = "High/low gold games for your group: a shared table, the debts it leaves, one-click payouts and the "
@@ -4383,7 +4451,8 @@ function G.SettingsHome()
       local snd = db and db.sound ~= false
       return ("pop-up %s  -  sounds %s"):format(pop and "on" or "off", snd and "on" or "off")
     end,
-    window = function() return UI:BuildOptions() end,
+    build = function(body) d = T.Dashboard(body, UI:DashModel()) end,
+    refresh = function() if d then d:Paint() end end,
     open = { label = "the table", func = function() UI:Show() end },
     api = { name = "BiSGambaAPI", about = "the leaderboard, debts, recent rounds and the table, read-only; Open()" },
   })
@@ -4621,7 +4690,7 @@ local function Slash(msg)
       db.soundChannel = v == "master" and "Master" or (v:sub(1, 1):upper() .. v:sub(2))
       Print("sounds play on the " .. db.soundChannel .. " channel")
     else
-      db.sound = db.sound == false
+      Own.sound(db.sound == false)      -- the one setter: the options window and the BiS> page's switch use it too
       Sound.quiet = false
       Print(db.sound and "sounds on" or "sounds off")
       if db.sound then Sound.Play("open") end
