@@ -1,5 +1,9 @@
 # BiS Gamba - Changelog
 
+## Unreleased
+
+- **Clearer windows.** In the options window every button, box and row lights up under the mouse, the window is 20% bigger, and the bottom strip shows which version you are on until you hover a setting.
+
 ## 1.9.1
 
 - **Fixed for Forever's surnames: party members hear each other again.** On Forever a character is "Name Surname", but Gamba compared the first name with the whole one, so a party member's messages were ignored. A deathroll challenge never reached the other player, and a table did not open for the rest of the party. Gamba now goes by the whole name everywhere, and a roll line that shows only a first name still counts for the right player.
