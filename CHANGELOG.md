@@ -3,6 +3,9 @@
 ## Unreleased
 
 - **Clearer windows.** In the options window every button, box and row lights up under the mouse, the window is 20% bigger, and the bottom strip shows which version you are on until you hover a setting.
+- **Short words for every command.** Each command longer than four letters has a short one too: `/bisgamba hist` for history, `hush` for quiet, `aj` for autojoin, `tbl` for the table view and so on - `/bisgamba help` shows each one in brackets. The long words still work, so no macro breaks.
+- **Everything you can click lights up under the mouse.** The table's buttons wash purple and their words go bright; the "debts between others" line gets a bar on its left; a seat gets a purple edge; the big-table square and the people in the deathroll list light up clearly instead of barely.
+- **The table shows which version you are on.** Faint, bottom left, over the deathroll button - and on a test build the commit and the time it was put in the game, so you can tell at a glance whether you reloaded.
 
 ## 1.9.1
 

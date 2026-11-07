@@ -87,6 +87,8 @@ local function Gold(n) return Commas(n) .. "g" end
 local HEAD_H   = 76                 -- title + controls + status
 local PAD      = 8
 local MAX_ROLL = 1000000
+-- hover (Arn, 6 Nov 2026): a wash clearly seen; over art or text (a HIGHLIGHT layer) only a tint, the bar pops
+local HOVER = { WASH = 0.32, TINT = 0.22 }
 
 -- Textured stand-ins per race and sex for people out of range: city guards and
 -- innkeepers render with baked skin where the base player bodies come out white.
@@ -2435,8 +2437,27 @@ local function SmallButton(parent, text, w)
   fs:SetText(text)
   fs:SetTextColor(T.rgb("ink2"))
   b.text = fs
-  b:SetScript("OnEnter", function(self) if not self.off then self:SetBackdropBorderColor(T.rgb("accent")) end; if self.tip then GameTooltip:SetOwner(self, "ANCHOR_TOP"); GameTooltip:SetText(self.tip); GameTooltip:Show() end end)
-  b:SetScript("OnLeave", function(self) self:SetBackdropBorderColor(T.rgb(self.off and "line" or self.hot and "accent" or "line2")); GameTooltip:Hide() end)
+  -- HOVER POP (Arn, 6 Nov 2026: the family rule, BiS Tools the model): under the mouse a button washes accent,
+  -- its edge turns accent and its label goes to full brightness. ARTWORK sits over the backdrop, under the label.
+  -- A greyed-out button does nothing, so it does not light up - its tooltip still says why.
+  b.wash = b:CreateTexture(nil, "ARTWORK")
+  b.wash:SetPoint("TOPLEFT", 1, -1); b.wash:SetPoint("BOTTOMRIGHT", -1, 1)
+  b.wash:SetColorTexture(T.rgba("accent", 1))
+  b.wash:SetAlpha(0)
+  b:SetScript("OnEnter", function(self)
+    if not self.off then
+      self:SetBackdropBorderColor(T.rgb("accent"))
+      self.wash:SetAlpha(HOVER.WASH)
+      self.text:SetTextColor(T.rgb("ink"))
+    end
+    if self.tip then GameTooltip:SetOwner(self, "ANCHOR_TOP"); GameTooltip:SetText(self.tip); GameTooltip:Show() end
+  end)
+  b:SetScript("OnLeave", function(self)
+    self:SetBackdropBorderColor(T.rgb(self.off and "line" or self.hot and "accent" or "line2"))
+    self.wash:SetAlpha(0)
+    self.text:SetTextColor(T.rgb(self.off and "dim" or self.hot and "accent" or "ink2"))
+    GameTooltip:Hide()
+  end)
   return b
 end
 
@@ -2689,8 +2710,28 @@ local function MakeSeat(i, parent, big)
   hit:SetPoint("TOP", 0, -ROLL_H)
   hit:RegisterForClicks("LeftButtonUp", "RightButtonUp")
   seat.hit = hit
-  hit:SetScript("OnEnter", function() SeatTooltip(seat) end)
-  hit:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  -- hover (6 Nov 2026): the seat is a button (pay, remove, point), so it lights up - over the art only a tint,
+  -- and a 2 px accent edge around it does the popping
+  hit.wash = hit:CreateTexture(nil, "OVERLAY")
+  hit.wash:SetAllPoints()
+  hit.wash:SetColorTexture(T.rgba("accent", 1))
+  hit.wash:SetAlpha(0)
+  local edge = CreateFrame("Frame", nil, hit)
+  edge:SetAllPoints()
+  for _, side in ipairs({ { "TOPLEFT", "TOPRIGHT", nil, 2 }, { "BOTTOMLEFT", "BOTTOMRIGHT", nil, 2 },
+                          { "TOPLEFT", "BOTTOMLEFT", 2 }, { "TOPRIGHT", "BOTTOMRIGHT", 2 } }) do
+    local t = edge:CreateTexture(nil, "OVERLAY")
+    t:SetPoint(side[1]); t:SetPoint(side[2])
+    if side[3] then t:SetWidth(side[3]) else t:SetHeight(side[4]) end
+    t:SetColorTexture(T.rgba("accent", 1))
+  end
+  edge:Hide()
+  hit.edge = edge
+  hit:SetScript("OnEnter", function(self)
+    if seat.person then self.wash:SetAlpha(HOVER.TINT); self.edge:Show() end
+    SeatTooltip(seat)
+  end)
+  hit:SetScript("OnLeave", function(self) self.wash:SetAlpha(0); self.edge:Hide(); GameTooltip:Hide() end)
   hit:SetScript("OnClick", function(_, button)
     local p = seat.person
     if not p then return end
@@ -2905,6 +2946,26 @@ local function FillSeat(seat, p)
   if seat.artKey ~= key then seat.artKey = key; ApplyArt(seat) end
 end
 
+--- "1.9.2", and on a copy deploy.sh put in the game "1.9.2  c914fbf+ 1106-1841": the TOC copy then carries
+--- "## X-BiS-Build: <branch>@<commit> <MMDD-HHMM>" (a released zip has none). The branch stays out - too long.
+function G.VersionMark()
+  local get = (C_AddOns and C_AddOns.GetAddOnMetadata) or GetAddOnMetadata
+  local function meta(key)
+    if type(get) ~= "function" then return nil end
+    local ok, v = pcall(get, "BiSGamba", key)
+    return ok and type(v) == "string" and v ~= "" and v or nil
+  end
+  local v = meta("Version") or "?"
+  local b = meta("X-BiS-Build")
+  local sha = b and b:match("@(%S+)")
+  local when = b and b:match("(%S+)$")
+  return sha and (v .. "  " .. sha .. " " .. (when or "")) or v
+end
+
+function UI:Mark()
+  if self.verMark then self.verMark:SetText(T.text("dim", G.VersionMark())) end
+end
+
 function UI:Build()
   if self.frame then return end
   local f = CreateFrame("Frame", "BiSGambaFrame", UIParent, "BackdropTemplate")
@@ -3114,6 +3175,19 @@ function UI:Build()
   dr:SetScript("OnClick", function() if G.Deathroll then G.Deathroll.Toggle() end end)
   self.drBtn = dr
 
+  -- THE VERSION MARK (Arn, 6 Nov 2026: "a small version number on all the windows ... so you know what version
+  -- i am on"): faint, in the empty corner over the deathroll button, under your buttons - never in the header
+  -- bar, which already has its label (one bar, one label). On a deployed test build the commit and time too.
+  local mark = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  local font = GameFontDisableSmall and GameFontDisableSmall.GetFont and GameFontDisableSmall:GetFont()
+  if font then mark:SetFont(font, 8, "") end
+  mark:SetPoint("BOTTOMLEFT", dr, "TOPLEFT", 2, 4)
+  mark:SetWidth(ACT_W - 8)
+  mark:SetJustifyH("LEFT")
+  mark:SetAlpha(0.6)
+  self.verMark = mark
+  self:Mark()
+
   local snd = FooterCheck("sound",
     "Play the sound cues: last call, your turn to roll, winning, losing.",
     function(on)
@@ -3208,6 +3282,28 @@ function UI:Build()
     -- the "N debts between others" line opens and closes the rest
     row:SetScript("OnClick", function()
       if row.toggle then UI.showOthers = not UI.showOthers; UI:Refresh() end
+    end)
+    -- and lights up under the mouse (6 Nov 2026): a wash, a 3 px accent bar on the left, the words bright.
+    -- A plain debt line has nothing to click, so it stays still.
+    row.wash = row:CreateTexture(nil, "BACKGROUND")
+    row.wash:SetAllPoints()
+    row.wash:SetColorTexture(T.rgba("accent", 1))
+    row.wash:SetAlpha(0)
+    row.bar = row:CreateTexture(nil, "ARTWORK")
+    row.bar:SetPoint("TOPLEFT", -4, 0); row.bar:SetPoint("BOTTOMLEFT", -4, 0)      -- in the panel's margin
+    row.bar:SetWidth(3)
+    row.bar:SetColorTexture(T.rgba("accent", 1))
+    row.bar:Hide()
+    row:SetScript("OnEnter", function(self)
+      if not self.toggle then return end
+      self.hover = true
+      self.wash:SetAlpha(HOVER.WASH); self.bar:Show()
+      if self.label then self.text:SetText(T.text("ink", self.label)) end
+    end)
+    row:SetScript("OnLeave", function(self)
+      self.hover = nil
+      self.wash:SetAlpha(0); self.bar:Hide()
+      if self.toggle and self.label then self.text:SetText(T.text("muted", self.label)) end
     end)
     row:Hide()
     self.rows[i] = row
@@ -3790,8 +3886,8 @@ function UI:RefreshDebts()
     local l = lines[i]
     row.debt, row.toggle = l and l.debt, l and l.toggle
     if l and l.toggle then
-      row.text:SetText(T.text("muted", ("%d debt%s between others  ·  %s"):format(l.n, l.n == 1 and "" or "s",
-        self.showOthers and "hide" or "show")))
+      row.label = ("%d debt%s between others  ·  %s"):format(l.n, l.n == 1 and "" or "s", self.showOthers and "hide" or "show")
+      row.text:SetText(T.text(row.hover and "ink" or "muted", row.label))
       row.paid:Hide()
       row:Show()
     elseif l then
@@ -4326,50 +4422,62 @@ end
 ----------------------------------------------------------------------------
 -- slash
 ----------------------------------------------------------------------------
+-- SHORT WORDS (Arn, 6 Nov 2026: "any thing more than 3 or 4 letters cut it down"): every command word longer than 4
+-- letters answers to one of 4 or fewer too. The long words keep working, so no macro or habit breaks. The old
+-- short ones stay where they were in the parser (open, call, end, owe, join, opt, dr, top); these are the new ones.
+-- None of them is a word the parser already takes (the suite reads the parser to check).
+G.SHORT = {
+  hid = "hidden", tbl = "table", clr = "clear", nag = "nudge", rmnd = "remind", aj = "autojoin", copy = "autocopy",
+  tell = "whisper", who = "users", hush = "quiet", size = "scale", snd = "sound", vox = "voice", pop = "popup",
+  nvr = "neveropen", cmbt = "combat", mini = "minimap", tdbg = "tradedebug", fix = "fixtrade", rst = "reset",
+  take = "adopt", scp = "scope", wipe = "wipestats", rnds = "rounds", rbld = "rebuild", hist = "history",
+}
+
 local function Help()
-  Print(T.text("accent", "BiS Gamba") .. " " .. T.text("muted", ((C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata("BiSGamba", "Version"))
-    or (GetAddOnMetadata and GetAddOnMetadata("BiSGamba", "Version")) or "")) .. " - commands:")
+  Print(T.text("accent", "BiS Gamba") .. " " .. T.text("muted", G.VersionMark()) .. " - commands"
+    .. T.text("muted", " (the short word in brackets does the same):"))
   local lines = {
     "/bisgamba              toggle the table",
-    "/bisgamba start [N]    open a table, /roll N (default " .. tostring(db.wager) .. ")",
+    "/bisgamba start (open) [N]   open a table, /roll N (default " .. tostring(db.wager) .. ")",
     "/bisgamba call [secs]  last call: a countdown, then the rolls start themselves",
     "/bisgamba go           stop taking joins, start rolling now",
     "/bisgamba join         join / leave somebody else's table (types 1 / -1)",
     "/bisgamba roll         roll the right range",
     "/bisgamba view [2d|3d|table]  2D portraits, 3D portraits, or everyone around one table",
-    "/bisgamba table [big | demo [n|round|off]]  the table view; big; pretend people to look at",
+    "/bisgamba table (tbl) [big | demo [n|round|off]]  the table view; big; pretend people to look at",
     "/bisgamba end          settle with the rolls in / close the table",
-    "/bisgamba nudge        name the people still to roll, in chat",
-    "/bisgamba remind N     seconds before the straggler reminder (0 = off)",
+    "/bisgamba nudge (nag)  name the people still to roll, in chat",
+    "/bisgamba remind (rmnd) N   seconds before the straggler reminder (0 = off)",
     "/bisgamba pay [name]   trade the gold to the next person you owe",
-    "/bisgamba config       the settings window (options | settings)",
-    "/bisgamba debts        print who owes who",
-    "/bisgamba board        the leaderboard, biggest winners first",
+    "/bisgamba config (opt) the settings window",
+    "/bisgamba debts (owe)  print who owes who",
+    "/bisgamba board (top)  the leaderboard, biggest winners first",
     "/bisgamba sync         swap missing rounds with the group so the board agrees",
-    "/bisgamba adopt [who]  throw your ledger away and take theirs whole",
-    "/bisgamba rounds       the round ledger the leaderboard is built from",
-    "/bisgamba rebuild      recompute the leaderboard from the ledger",
-    "/bisgamba history      the last ten rounds",
-    "/bisgamba hidden       how often the game hid chat from the addon this session",
-    "/bisgamba scope [guild|all]   whether pug rounds count on the board",
-    "/bisgamba dr [name]   deathroll one player in your group or guild",
-    "/bisgamba team [gold]   a team game: even players, random sides, losers pay winners one to one",
-    "/bisgamba wipestats yes       throw away your ledger",
-    "/bisgamba wipestats all       ask everyone with the addon to wipe theirs too",
+    "/bisgamba adopt (take) [who]   throw your ledger away and take theirs whole",
+    "/bisgamba rounds (rnds)   the round ledger the leaderboard is built from",
+    "/bisgamba rebuild (rbld)  recompute the leaderboard from the ledger",
+    "/bisgamba history (hist)  the last ten rounds",
+    "/bisgamba hidden (hid) how often the game hid chat from the addon this session",
+    "/bisgamba scope (scp) [guild|all]   whether pug rounds count on the board",
+    "/bisgamba dr [name]    deathroll one player in your group or guild",
+    "/bisgamba team [gold]  a team game: even players, random sides, losers pay winners one to one",
+    "/bisgamba wipestats (wipe) yes   throw away your ledger",
+    "/bisgamba wipestats (wipe) all   ask everyone with the addon to wipe theirs too",
     "/bisgamba paid A B     mark A's debt to B paid",
-    "/bisgamba clear        wipe every debt",
+    "/bisgamba clear (clr)  wipe every debt",
     "/bisgamba flat         toggle: loser pays the difference (default) or the full wager",
-    "/bisgamba autojoin     toggle: seat anyone in the group who /rolls the range (default off: only 1 / join counts)",
-    "/bisgamba quiet        toggle chat announcements",
-    "/bisgamba popup        toggle: open the window when a host starts a game",
-    "/bisgamba combat       toggle hiding the window while you're in combat",
-    "/bisgamba neveropen    toggle: nothing ever appears on its own",
-    "/bisgamba sound        toggle the cues (sound test | probe | kit <id> | sfx|master)",
-    "/bisgamba voice        speak the cues with a FojjiCore voice pack (voice list | <name> | off | auto)",
-    "/bisgamba whisper      toggle whispering the balance to people without the addon",
-    "/bisgamba users        who else you have seen running BiS Gamba",
-    "/bisgamba autocopy     toggle selecting the amount for you when a trade opens",
-    "/bisgamba scale X | zoom X | npc Race 2|3 id | minimap | fixtrade | tradedebug | reset",
+    "/bisgamba autojoin (aj)   toggle: seat anyone in the group who /rolls the range (default off: only 1 / join counts)",
+    "/bisgamba quiet (hush) toggle chat announcements",
+    "/bisgamba popup (pop)  toggle: open the window when a host starts a game",
+    "/bisgamba combat (cmbt)   toggle hiding the window while you're in combat",
+    "/bisgamba neveropen (nvr) toggle: nothing ever appears on its own",
+    "/bisgamba sound (snd)  toggle the cues (sound test | probe | kit <id> | sfx|master)",
+    "/bisgamba voice (vox)  speak the cues with a FojjiCore voice pack (voice list | <name> | off | auto)",
+    "/bisgamba whisper (tell)  toggle whispering the balance to people without the addon",
+    "/bisgamba users (who)  who else you have seen running BiS Gamba",
+    "/bisgamba autocopy (copy) toggle selecting the amount for you when a trade opens",
+    "/bisgamba scale (size) X | zoom X | npc Race 2|3 id",
+    "/bisgamba minimap (mini) | fixtrade (fix) | tradedebug (tdbg) | reset (rst)",
   }
   for _, l in ipairs(lines) do DEFAULT_CHAT_FRAME:AddMessage("  " .. T.text("ink2", l)) end
 end
@@ -4378,6 +4486,7 @@ local function Slash(msg)
   msg = (msg or ""):gsub("^%s+", ""):gsub("%s+$", "")
   local cmd, rest = msg:match("^(%S+)%s*(.*)$")
   cmd = (cmd or ""):lower()
+  cmd = G.SHORT[cmd] or cmd                   -- a short word is its long word from here on
   if cmd == "" then UI:Toggle()
   elseif cmd == "start" or cmd == "open" then UI:Show(); Game.Open(tonumber(rest))
   elseif cmd == "go" then UI:Show(); Game.StartRolls()
