@@ -1,6 +1,6 @@
 # BiS Gamba - Changelog
 
-## Unreleased
+## 1.10.0
 
 - **Clearer windows.** In the options window every button, box and row lights up under the mouse, the window is 20% bigger, and the bottom strip shows which version you are on until you hover a setting.
 - **Short words for every command.** Each command longer than four letters has a short one too: `/bisgamba hist` for history, `hush` for quiet, `aj` for autojoin, `tbl` for the table view and so on - `/bisgamba help` shows each one in brackets. The long words still work, so no macro breaks.
