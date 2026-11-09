@@ -1,5 +1,9 @@
 # BiS Gamba - Changelog
 
+## Unreleased
+
+- Fixed: if a fight started while you were dragging the Gamba window, it was put away with the drag still on, and it came back after the fight stuck to your mouse. A fight now ends the drag first, and the window stays where you dropped it.
+
 ## 2.0.0 - Forever 1.0
 
 - BiS> Gamba in Esc > Options > AddOns is a full-page dashboard now: every section down the left, its settings big and readable on the right.

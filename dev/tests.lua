@@ -41,7 +41,17 @@ function Frame:Hide()
   local was = self.shown
   self.shown = false
   if was and self.scripts.OnHide then self.scripts.OnHide(self) end
+  -- HIDDEN MID-DRAG, THE DRAG IS STILL ON (8 Nov 2026, the drag audit after BiS Tools' boss window held Arn's mouse
+  -- until he killed the game): a hidden frame never hears the button come up, so OnDragStop never runs and the client
+  -- keeps it moving - shown again, it is glued to the cursor. Only StopMovingOrSizing ends it (OnHide may: above).
+  if was and self.moving then strandedDrag = strandedDrag + 1 end
 end
+-- A DRAG, AS THE CLIENT HOLDS IT: StartMoving glues the frame to the cursor, only StopMovingOrSizing lets go (these
+-- were catch-all no-ops, so every drag "ended" however it was left). A frame that stops taking the mouse mid-drag
+-- never hears the button come up either.
+strandedDrag = 0
+function Frame:StartMoving() self.moving = true end
+function Frame:StopMovingOrSizing() self.moving = nil end
 function Frame:IsShown() return self.shown end
 function Frame:IsVisible() return self.shown end
 function Frame:GetPoint() return "CENTER", nil, "CENTER", 10, 20 end
@@ -99,7 +109,10 @@ function Frame:SetAllPoints(rel) self.all = rel or true end
 -- the BiS> dashboard kit's calls, kept the way the client keeps them (an unsized frame answers 0 wide, 0 tall -
 -- newFrame above, 8 Nov: it was a made-up 100 - and GetStringHeight is left to the catch-all nil: before layout
 -- the client cannot say)
-function Frame:EnableMouse(v) self.mouse = v and true or false end
+function Frame:EnableMouse(v)
+  if not v and self.moving then strandedDrag = strandedDrag + 1 end
+  self.mouse = v and true or false
+end
 function Frame:RegisterForClicks(...) self.clicks = { ... } end
 function Frame:SetWordWrap(v) self.wrap = v and true or false end
 function Frame:SetJustifyV(v) self.justV = v end
@@ -2378,8 +2391,16 @@ SlashCmdList.BISGAMBA("reset")
 SlashCmdList.BISGAMBA("reset")
 G.UI:Show()
 check(G.UI.frame.shown, "window open")
+-- AND YOU ARE DRAGGING IT WHEN THE PULL COMES (8 Nov 2026, the drag audit after BiS Tools' boss window held Arn's mouse
+-- until he killed the game): hidden mid-drag, it would come back after the fight glued to the cursor
+strandedDrag = 0
+BiSGambaDB.x, BiSGambaDB.y = nil, nil
+G.UI.frame.scripts.OnDragStart(G.UI.frame)
+check(G.UI.frame.moving, "the window is being dragged when the pull comes")
 inCombat = true; fire("PLAYER_REGEN_DISABLED")
 check(not G.UI.frame.shown, "combat hides it")
+check(not G.UI.frame.moving and strandedDrag == 0, "and the drag ENDS first - not glued to the cursor after the fight")
+check(BiSGambaDB.x ~= nil, "and where it was dropped is kept")
 -- a table opening mid-fight must not drag it back on screen
 from("Dps2", "OPEN", "70")
 check(not G.UI.frame.shown, "and a new table does not pop it up mid-fight")

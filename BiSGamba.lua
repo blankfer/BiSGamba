@@ -2986,6 +2986,18 @@ function UI:Mark()
   if self.verMark then self.verMark:SetText(T.text("dim", G.VersionMark())) end
 end
 
+--- The drag ends, however the window goes (8 Nov 2026, the drag audit after BiS Tools' boss window held Arn's mouse
+--- until he killed the game): the button up, a fight putting it away, Escape. Hidden mid-drag, a window never hears the
+--- button come up and comes back glued to the cursor; only StopMovingOrSizing lets go. Where it stands is kept.
+function UI.EndDrag(f)
+  if not (f and f.dragging) then return false end
+  f.dragging = nil
+  f:StopMovingOrSizing()
+  local point, _, rel, x, y = f:GetPoint()
+  db.point, db.rel, db.x, db.y = point, rel, x, y
+  return true
+end
+
 function UI:Build()
   if self.frame then return end
   local f = CreateFrame("Frame", "BiSGambaFrame", UIParent, "BackdropTemplate")
@@ -2993,12 +3005,13 @@ function UI:Build()
   f:SetFrameStrata("MEDIUM")
   f:SetMovable(true); f:EnableMouse(true); f:SetClampedToScreen(true)
   f:RegisterForDrag("LeftButton")
-  f:SetScript("OnDragStart", f.StartMoving)
-  f:SetScript("OnDragStop", function(self)
-    self:StopMovingOrSizing()
-    local point, _, rel, x, y = self:GetPoint()
-    db.point, db.rel, db.x, db.y = point, rel, x, y
+  f:SetScript("OnDragStart", function(self)
+    self:StartMoving()
+    self.dragging = true
   end)
+  f:SetScript("OnDragStop", function(self) UI.EndDrag(self) end)
+  -- hidden mid-drag (a fight puts it away, Escape, the x): the drag ends with it
+  f:HookScript("OnHide", function(self) UI.EndDrag(self) end)
   f:SetScale(db.scale or 1)
   if db.x then f:SetPoint(db.point or "CENTER", UIParent, db.rel or db.point or "CENTER", db.x, db.y) else f:SetPoint("CENTER") end
   T.skin(f, "line2")
@@ -3965,6 +3978,7 @@ end
 function UI:CombatHide()
   if G.Table and G.Table.big then G.Table.SetBig(false) end    -- a fight: never the big table
   if db.combat == false then return end
+  if self.frame then UI.EndDrag(self.frame) end                 -- a drag still on ends first (its OnHide would too)
   if self.frame and self.frame:IsShown() then
     self.pendingShow = true
     self.frame:Hide()
