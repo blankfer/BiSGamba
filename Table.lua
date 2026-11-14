@@ -33,6 +33,11 @@ Tb.R_TABLE, Tb.R_SEAT, Tb.R_FLOOR = 230, 330, 470       -- the table, where peop
 Tb.KX, Tb.KY, Tb.CY = 0.42, 0.28, 0.50                  -- table space -> the stage: across, deep, the middle
 Tb.MODEL_W, Tb.MODEL_H = 44, 60                         -- a model at the front of the small stage
 Tb.SPEED = 300                                          -- table units a second, walking
+-- SMOOTH (Arn, 14 Nov 2026: BiS Shell's games got smooth - "bis gamba I know we use 3d models over there"): people TURN
+-- at Tb.TURN radians a second instead of snapping round, and a walk EASES - it starts at Tb.EASE_FROM of the speed and
+-- reaches it in 1 / Tb.EASE_UP s, and slows over its last Tb.EASE_IN units, instead of full speed from the first frame
+Tb.TURN = 7
+Tb.EASE_FROM, Tb.EASE_UP, Tb.EASE_IN = 0.35, 3, 60
 Tb.WALK = { delay = 1.4, gap = 0.5, beg = 1.6, short = 70 }   -- the pay walk (stops this far short)
 Tb.BIG = 1.5                                            -- the big window: at most this much bigger
 Tb.DEMO_NAMES = { "Grizzik", "Hazel", "Brakka", "Lune", "Odo", "Vex", "Morrigan", "Tibbs", "Kael", "Rhea",
@@ -240,13 +245,28 @@ function Tb.Place(a)
   if a.lvl ~= lvl then a.lvl = lvl a.f:SetFrameLevel(lvl) a.model:SetFrameLevel(lvl) end
 end
 
---- Turn to face a spot (asked only when the angle really changes).
+--- Face a spot: the first time at once; after that the actor TURNS there (Tb.TurnStep, a frame at a time).
 function Tb.Face(a, x, y)
   local f = Tb.Facing(a.x, a.y, x, y)
-  if not a.face or math.abs(f - a.face) > 0.05 then
+  a.faceT = f
+  if not a.face then
     a.face = f
     pcall(a.model.SetFacing, a.model, f)
+    return
   end
+  if math.abs((f - a.face + math.pi) % (2 * math.pi) - math.pi) > 0.01 and Tb.Wake then Tb.Wake() end
+end
+
+--- One frame of turning: toward its spot, the short way round. Answers true while it still turns.
+function Tb.TurnStep(a, dt)
+  if not (a.faceT and a.face) then return false end
+  local d = (a.faceT - a.face + math.pi) % (2 * math.pi) - math.pi
+  if math.abs(d) <= 0.01 then return false end
+  local most = Tb.TURN * dt
+  if d > most then d = most elseif d < -most then d = -most end
+  a.face = a.face + d
+  pcall(a.model.SetFacing, a.model, a.face)
+  return true
 end
 
 --- Lay the room out (UI:Layout, the table view): the stage's size for this many people, the table, and
@@ -351,9 +371,10 @@ function Tb.Walking()
 end
 
 local function wake()
-  if Tb.mover:GetScript("OnUpdate") then return end
+  if not Tb.mover or Tb.mover:GetScript("OnUpdate") then return end
   Tb.mover:SetScript("OnUpdate", function(_, dt) Tb.Tick(dt) end)
 end
+Tb.Wake = wake
 
 --- Give an actor a set of legs to play: { go = {x, y} } walks there, { wait = s }, { act = anim, hold = s }.
 function Tb.Legs(a, legs)
@@ -367,6 +388,7 @@ function Tb.Tick(dt)
   dt = math.min(tonumber(dt) or 0, 0.1)
   local any = false
   for _, a in ipairs(Tb.actors) do
+    if a.person and Tb.TurnStep(a, dt) then any = true end
     local leg = a.person and a.legs and a.legs[1]
     if leg then
       any = true
@@ -392,7 +414,9 @@ function Tb.Tick(dt)
         end
         local dx, dy = gx - a.x, gy - a.y
         local d = math.sqrt(dx * dx + dy * dy)
-        local step = Tb.SPEED * dt
+        leg.t = (leg.t or 0) + dt                    -- eased: up to speed at the start, slowing at the end
+        local ease = math.min(1, Tb.EASE_FROM + leg.t * Tb.EASE_UP) * math.min(1, Tb.EASE_FROM + d / Tb.EASE_IN)
+        local step = math.max(1, Tb.SPEED * ease * dt)
         if d <= step then
           a.x, a.y = gx, gy
           table.remove(a.legs, 1)
