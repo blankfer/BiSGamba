@@ -733,8 +733,19 @@ do
   local esx, esy = Tb.ToStage(Tb.Clamp(Tb.FromStage(-50, -50)))
   check(math.abs(esx - fl) < 1 and math.abs(esy - ft) < 1 and ft >= Tb.MODEL_H * 0.72 * Tb.k,
     "past the edge: you stop at it, the whole model still on the stage")
+  local x0, y0 = mine.x, mine.y
   mover.scripts.OnUpdate(mover, 0.05)
   check(mine.model.anim == 5, "running")
+  -- SMOOTH (Arn, 14 Nov 2026: "bis gamba I know we use 3d models over there"): a walk eases off the mark, and you turn
+  local moved = math.sqrt((mine.x - x0) ^ 2 + (mine.y - y0) ^ 2)
+  check(moved > 0 and moved < Tb.SPEED * 0.05 * 0.99, "the walk eases off the mark (not full speed on the first frame): " .. moved)
+  do
+    local f0 = mine.face
+    mine.faceT = f0 + 2.5                        -- a big turn asked: it comes a step at a time
+    Tb.TurnStep(mine, 0.05)
+    check(mine.face ~= f0 and math.abs(mine.face - f0) <= Tb.TURN * 0.05 + 1e-9, "people turn at Tb.TURN a second, never snap")
+    mine.faceT = mine.face
+  end
   for _ = 1, 80 do if mover.scripts.OnUpdate then mover.scripts.OnUpdate(mover, 0.1) end end
   check(not mine.walking and math.abs(mine.x - x) < 1 and mine.model.anim == 0 and mover.scripts.OnUpdate == nil,
     "there: standing again, and nothing ticks")
