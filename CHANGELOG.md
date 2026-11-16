@@ -1,5 +1,9 @@
 # BiS Gamba - Changelog
 
+## 2.0.2
+
+- **The table view moves smoothly.** People turn toward whoever they face instead of snapping round, and a walk starts slow, speeds up, and eases to a stop. See it with `/bisgamba table demo round`.
+
 ## 2.0.1
 
 - Fixed: if a fight started while you were dragging the Gamba window, it was put away with the drag still on, and it came back after the fight stuck to your mouse. A fight now ends the drag first, and the window stays where you dropped it.
