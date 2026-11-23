@@ -19,4 +19,5 @@ Libs\RezComm-1.0\RezComm-1.0.lua
 BiSGamba.lua
 Deathroll.lua
 Table.lua
+DeckApp.lua
 API.lua

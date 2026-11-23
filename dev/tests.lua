@@ -454,9 +454,10 @@ do
 end
 assert(#TOC >= 2, "the TOC lists files")
 -- Deathroll.lua (16 Oct 2026) and Table.lua (20 Oct) build on BiSGamba.lua's kit, so they come straight after it
-assert(TOC[#TOC - 3] == "BiSGamba.lua" and TOC[#TOC - 2] == "Deathroll.lua" and TOC[#TOC - 1] == "Table.lua"
-  and TOC[#TOC] == "API.lua",
-  "BiSGamba.lua, then Deathroll.lua and Table.lua, then API.lua (BiSGambaAPI) last - it loads after everything it calls")
+-- DeckApp.lua (22 Nov 2026): the phone's app, after the table, before the API
+assert(TOC[#TOC - 4] == "BiSGamba.lua" and TOC[#TOC - 3] == "Deathroll.lua" and TOC[#TOC - 2] == "Table.lua"
+  and TOC[#TOC - 1] == "DeckApp.lua" and TOC[#TOC] == "API.lua",
+  "BiSGamba.lua, then Deathroll.lua, Table.lua and DeckApp.lua, then API.lua (BiSGambaAPI) last - it loads after everything it calls")
 for _, f in ipairs(TOC) do
   local fn = assert(loadfile(f), "TOC lists a file that does not exist: " .. f)
   fn("BiSGamba")
@@ -3541,6 +3542,103 @@ do
   check(f.autoOpen == false and f.sound == false and f.whisper == false and f.announce == false,
         "existing save with them off: still off, and its own announce choice kept")
   load(keep)
+end
+
+-- GAMBA ON THE PHONE (DeckApp.lua, 22 Nov 2026 - Arn: "start gamba"; the mock's picks: "phone and room")
+do
+  local defs, opened, dirty = {}, nil, 0
+  local keepDeck = BiSTheme.Deck
+  local A = G.DeckApp
+  check(A and A.handle == nil, "no phone at login: the app stays out of the way")
+  BiSTheme.Deck = { Register = function(d) d.id = d.owner .. ":" .. d.key defs[d.id] = d return { Dirty = function() dirty = dirty + 1 end } end,
+    Open = function(id) opened = id return true end }
+  check(A.Register() == true and A.Register() == false, "with the phone: it registers, once")
+  local def = defs["BiSGamba:gamba"]
+  local p, c = def.page, def.card
+  local function rows(tab) return p.rows(tab) end
+  local function find(list, words) for _, r in ipairs(list) do if tostring(r.text):find(words, 1, true) then return r end end end
+  local keepRaid = inRaid
+  inRaid = true
+  G.Game.Reset()
+  BiSGambaDB.debts = {}
+  dirty = 0
+  -- no table
+  check(c.prio() == nil and c.prio(true) == 1, "no table, nothing owed: no card (pulled out: a quiet one)")
+  check(#rows(1) == 0 and p.text(1):find("OPEN A TABLE", 1, true) and p.big(1).word == "OPEN A TABLE", "TABLE: none open, the big button opens one")
+  check(p.keys(1)[1].word == "3D ROOM", "3D ROOM is always there")
+  -- you open one
+  p.big(1).fn()
+  check(G.Game.state == "JOIN" and G.Game.IsHost() and dirty > 0, "OPEN A TABLE: open, and the phone is told to repaint")
+  check(c.prio() == 5 and c.lines()[3] == "You are at the table", "seated: a card that says so")
+  check(p.big(1) == nil, "alone at it: nothing to press yet")
+  fire("CHAT_MSG_RAID", "1", "Dps2-Dreamscythe")
+  check(#rows(1) == 3 and rows(1)[2].text == "Kumlust" and rows(1)[3].text == "Dps2" and rows(1)[3].right == "in", "the seats, in order", tostring(rows(1)[3] and rows(1)[3].text))
+  local keys = {}
+  for _, k in ipairs(p.keys(1)) do keys[#keys + 1] = k.word end
+  check(table.concat(keys, " ") == "3D ROOM LAST CALL END", "the host's keys: LAST CALL, END", table.concat(keys, " "))
+  check(p.big(1).word == "CALL THE ROLLS", "two at it: the host calls the rolls")
+  p.big(1).fn()
+  check(G.Game.state == "ROLL" and c.prio() == 9 and c.lines()[3] == "Your roll" and c.buttons()[1].word == "ROLL", "rolls called: YOUR ROLL is the hottest card")
+  check(p.big(1).word:find("^ROLL") and p.say(1):find("Waiting on", 1, true), "and the big button rolls")
+  local before = #rolled
+  c.buttons()[1].fn()
+  check(#rolled == before + 1 and rolled[#rolled][2] == G.Game.max, "ROLL rolls the table's range")
+  fire("CHAT_MSG_SYSTEM", "Kumlust rolls 70 (1-" .. G.Game.max .. ")")
+  fire("CHAT_MSG_SYSTEM", "Dps2 rolls 20 (1-" .. G.Game.max .. ")")
+  runTimers(30)
+  local res = G.Game.result
+  check(res and res.winner == "Kumlust" and find(rows(1), "Dps2 pays Kumlust"), "settled: who pays whom, on the table", res and res.winner)
+  check(c.prio() == nil, "settled, nobody owes you anything you must do: no card")
+  -- somebody else's table
+  G.Game.Reset()
+  from("Dps2", "OPEN", 100, "-")
+  check(G.Game.Remote() and c.prio() == 8 and c.lines()[3] == "Dps2 opened a table" and c.lines().hot, "Dps2 opens a table: the card asks, hot")
+  local b = c.buttons()
+  check(b[1].word == "JOIN" and b[2].word == "NOT NOW" and p.big(1).word == "JOIN", "JOIN and NOT NOW; JOIN on the page too")
+  b[2].fn()
+  check(c.prio() == nil, "NOT NOW: gone for this table")
+  p.big(1).fn()
+  check(said[#said] == "RAID: 1", "JOIN types 1 in group chat, as the window's button does")
+  G.Game.Reset()
+  -- the debts
+  BiSGambaDB.debts = { { from = "Kumlust", to = "Dps2", amount = 40, at = 1 }, { from = "Frank G", to = "Kumlust", amount = 120, at = 1 } }
+  local d3 = rows(3)
+  check(#d3 == 2 and d3[1].text == "Frank G owes you" and d3[2].text == "You owe Dps2" and d3[2].verb == "PAY", "DEBTS: owed to you, then what you owe with PAY")
+  check(p.boxes(3)[1][2] == "120g" and p.boxes(3)[2][2] == "40g", "its boxes", p.boxes(3)[1][2])
+  check(c.prio() == 4 and c.lines()[3] == "You owe Dps2" and c.buttons()[1].word == "PAY", "you owe somebody in the group: a PAY card")
+  check(p.big(1).word == "PAY Dps2", "and PAY is the table's big button while no table is open")
+  -- the board, and a name's page
+  G.db.stats = { Kumlust = { net = 420, wins = 9, losses = 3, games = 12, best = 200, worst = 40 }, Dps2 = { net = -420, wins = 3, losses = 9, games = 12, best = 40, worst = 200 } }
+  local b2 = rows(2)
+  check(G.Kit.Gold(-1420) == "-1,420g" and G.Kit.Gold(1420) == "1,420g" and G.Kit.Gold(-420) == "-420g", "a loss in gold reads -1,420g (it was -,420g)", G.Kit.Gold(-420))
+  check(#b2 == 2 and b2[1].text == "Kumlust" and b2[1].right == "+420g" and b2[2].right == "-420g" and b2[2].ink == "warn", "BOARD: best first, net in colour", b2[1].right)
+  b2[2].act.fn()
+  check(p.title() == "Dps2" and p.boxes(2)[1][2] == "-420g" and rows(2)[1].text == "Back" and find(rows(2), "You owe Dps2"), "a name opens to its page: net, what you owe them")
+  check(p.big(2).word == "DEATHROLL", "and a DEATHROLL with them")
+  rows(2)[1].act.fn()
+  check(p.title() == "Gamba", "Back: the board")
+  -- the settings: the options window's own switches
+  local s4 = rows(4)
+  local snd = find(s4, "Sound cues")
+  check(snd and snd.right and find(s4, "Every setting"), "SETTINGS: the window's switches, and its door")
+  local was = BiSGambaDB.sound
+  snd.act.fn()
+  check(BiSGambaDB.sound ~= was, "a switch flips the setting itself")
+  BiSGambaDB.sound = was
+  -- the card's OPEN goes to the app
+  BiSGambaDB.debts = {}
+  c.buttons()[1].fn()
+  check(opened == "BiSGamba:gamba", "a quiet card's OPEN opens the app")
+  -- nothing in it errors on any tab, with or without a table
+  for tab = 1, 4 do
+    for _, f in ipairs({ "boxes", "rows", "text", "say", "big", "keys" }) do
+      local fine, why = pcall(p[f], tab)
+      check(fine, "tab " .. tab .. " " .. f .. ": no error " .. tostring(why))
+    end
+  end
+  inRaid = keepRaid
+  G.db.stats, G.db.debts = {}, {}
+  BiSTheme.Deck = keepDeck
 end
 
 print(("%d checks, %d failed"):format(pass + fail, fail))
