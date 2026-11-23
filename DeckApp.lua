@@ -64,7 +64,7 @@ local function tableBoxes()
     if not g then return {} end
     local cd = g.Countdown and g.Countdown()
     local out = { { "TABLE", STATE_WORD[g.state] or g.state, g.state == "JOIN" and "good" or g.state == "ROLL" and "gold" or "ink2" },
-        { "SEATS", #(g.order or {}) }, { "ROLL", "1-" .. tostring(g.max or 100) } }
+        { "SEATS", #(g.order or {}), "accent" }, { "ROLL", "1-" .. tostring(g.max or 100), "gold" } }
     if cd then out[#out + 1] = { "CLOSES", math.ceil(cd) .. "s", "warn" } end
     return out
 end
@@ -77,9 +77,16 @@ local function tableRows()
     for i, name in ipairs(g.order or {}) do
         local p = g.players[name] or {}
         local roll = p.tieRoll or p.roll
-        local ink = (res and name == res.winner and "good") or (res and name == res.loser and "warn") or (name == me() and "accent") or nil
+        -- (the colour pass, 22 Nov: the class's circle, the winner green and the loser red on the NAME, the roll in gold)
+        local tint = (res and name == res.winner and "good") or (res and name == res.loser and "warn") or p.class or nil
+        local D = Deck()
+        local pic, co
+        if D and D.ClassPic then pic, co = D.ClassPic(p.class) end
         local right = roll and tostring(roll) or (g.state == "JOIN" and "in" or "rolling")
-        out[#out + 1] = { mark = tostring(i), text = name, right = right, ink = ink, act = { word = "open", peek = true, fn = function() pick = { name = name } end } }
+        local sub = (res and name == res.winner and "wins") or (res and name == res.loser and "pays") or (name == me() and "you") or nil
+        local cls = p.class and cap(p.class)
+        out[#out + 1] = { mark = not pic and tostring(i) or nil, pic = pic, coords = co, text = name, tint = tint, sub = cls and (sub and (cls .. ", " .. sub) or cls) or sub,
+            right = right, ink = roll and "gold" or "ink2", act = { word = "open", peek = true, fn = function() pick = { name = name } end } }
     end
     if res and res.winner and res.loser then
         out[#out + 1] = { head = true, text = res.loser .. " pays " .. res.winner, right = gold(res.amount) }
@@ -140,7 +147,9 @@ local function boardRows()
     local out = {}
     for i, row in ipairs(G and G.Board() or {}) do
         local net = tonumber(row.r.net) or 0
-        out[#out + 1] = { mark = tostring(i), text = row.name, right = signed(net), ink = net > 0 and "good" or net < 0 and "warn" or nil,
+        local r = row.r
+        out[#out + 1] = { mark = tostring(i), text = row.name, tint = row.name == me() and "accent" or nil, right = signed(net), ink = net > 0 and "good" or net < 0 and "warn" or "ink2",
+            sub = (tonumber(r.wins) or 0) .. " won, " .. (tonumber(r.losses) or 0) .. " lost",
             act = { word = "open", peek = true, fn = function() pick = { name = row.name } end } }
     end
     return out
@@ -150,7 +159,7 @@ local function boardBoxes()
     local kind, len = G.Streak(me())
     return { { "YOU", signed(s.net), (tonumber(s.net) or 0) >= 0 and "gold" or "warn" },
         { "STREAK", len and len > 1 and (len .. (kind == "win" and " won" or " lost")) or "-", kind == "win" and "good" or kind == "lose" and "warn" or "dim" },
-        { "ROUNDS", tonumber(s.games) or 0 } }
+        { "ROUNDS", tonumber(s.games) or 0, "accent" } }
 end
 local function nameBoxes(name)
     local s = stat(name)
