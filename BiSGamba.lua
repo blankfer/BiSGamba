@@ -75,9 +75,10 @@ local function Bare(name)
   return (name:match("^[^-]+")) or name
 end
 local function Commas(n)
-  local s = tostring(math.floor(tonumber(n) or 0))
+  local v = math.floor(tonumber(n) or 0)
+  local s = tostring(math.abs(v))           -- (22 Nov 2026: -420 came out "-,420"; the sign goes on after)
   local out = s:reverse():gsub("(%d%d%d)", "%1,"):reverse()
-  return (out:gsub("^,", ""))
+  return (v < 0 and "-" or "") .. (out:gsub("^,", ""))
 end
 local function Gold(n) return Commas(n) .. "g" end
 
